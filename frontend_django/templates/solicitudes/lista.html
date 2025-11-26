@@ -1,0 +1,364 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Solicitudes - Sistema PESCO{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1 text-gray-800">Solicitudes</h1>
+            <p class="text-muted mb-0">Gestión y seguimiento de solicitudes.</p>
+        </div>
+        <div>
+            <a href="." class="btn btn-light border shadow-sm">
+                <i class="bi bi-arrow-clockwise"></i> Actualizar
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtros y Búsqueda -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body p-3">
+            <form method="get" class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0">
+                            <i class="bi bi-search text-muted"></i>
+                        </span>
+                        <input type="text" name="q" class="form-control border-start-0 ps-0"
+                            placeholder="Buscar por cliente, pedido, ST..." value="{{ busqueda|default:'' }}">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select name="estado" class="form-select" onchange="this.form.submit()">
+                        <option value="">Todos los estados</option>
+                        <option value="PENDIENTE" {% if estado == 'PENDIENTE' %}selected{% endif %}>Pendiente</option>
+                        <option value="EN_PROCESO" {% if estado == 'EN_PROCESO' %}selected{% endif %}>En Proceso</option>
+                        <option value="COMPLETADO" {% if estado == 'COMPLETADO' %}selected{% endif %}>Completado</option>
+                        <option value="CANCELADO" {% if estado == 'CANCELADO' %}selected{% endif %}>Cancelado</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="tipo" class="form-select" onchange="this.form.submit()">
+                        <option value="">Todos los tipos</option>
+                        <option value="OC" {% if tipo == 'OC' %}selected{% endif %}>Orden de Compra</option>
+                        <option value="ST" {% if tipo == 'ST' %}selected{% endif %}>Solicitud de Traslado</option>
+                        <option value="PC" {% if tipo == 'PC' %}selected{% endif %}>Pedido Cliente</option>
+                    </select>
+                </div>
+                <div class="col-md-2 text-end">
+                    {% if busqueda or estado or tipo %}
+                    <a href="{% url 'solicitudes:lista' %}" class="btn btn-outline-secondary w-100">
+                        <i class="bi bi-x-circle me-1"></i> Limpiar
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de Resultados -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light text-uppercase text-muted small fw-bold">
+                        <tr>
+                            <th class="ps-4 py-3">ID</th>
+                            <th class="py-3">Fecha / Hora</th>
+                            <th class="py-3">Tipo</th>
+                            <th class="py-3">Referencia</th>
+                            <th class="py-3">Cliente</th>
+                            <th class="py-3 text-center">Items</th>
+                            <th class="py-3">Estado</th>
+                            <th class="py-3">Prioridad</th>
+                            <th class="py-3">Transporte</th>
+                            <th class="pe-4 py-3 text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for solicitud in page_obj %}
+                        <tr>
+                            <td class="ps-4 fw-bold text-dark">#{{ solicitud.id }}</td>
+                            <td>
+                                <div class="d-flex flex-column">
+                                    <span class="fw-medium">{{ solicitud.fecha_solicitud|date:"d/m/Y" }}</span>
+                                    <span class="text-muted small">{{ solicitud.hora_solicitud|time:"H:i" }}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    {{ solicitud.get_tipo_display }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if solicitud.tipo == 'ST' and solicitud.numero_st %}
+                                <span class="font-monospace">{{ solicitud.numero_st }}</span>
+                                {% elif solicitud.numero_pedido %}
+                                <span class="font-monospace">{{ solicitud.numero_pedido }}</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="fw-medium">{{ solicitud.cliente }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary rounded-pill">{{ solicitud.total_codigos }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ solicitud.color_estado }} px-3 py-2" style="border-radius: 4px;">
+                                    {{ solicitud.get_estado_display }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if solicitud.urgente %}
+                                <span class="badge bg-danger text-white px-3 py-2 fw-bold" style="border-radius: 4px;">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i> Urgente
+                                </span>
+                                {% else %}
+                                <span class="badge bg-light text-dark border px-3 py-2" style="border-radius: 4px;">Normal</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-truck text-muted me-2"></i>
+                                    {{ solicitud.get_transporte_display }}
+                                </div>
+                            </td>
+                            <td class="pe-4 text-end">
+                                <div class="btn-group">
+                                    <button type="button" class="btn btn-sm btn-light text-primary"
+                                        onclick="verDetalleSolicitud('{{ solicitud.id }}')" title="Vista rápida">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <a href="{% url 'solicitudes:detalle' solicitud.id %}"
+                                        class="btn btn-sm btn-light text-secondary" title="Ver detalle completo">
+                                        <i class="bi bi-box-arrow-up-right"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="text-center py-5">
+                                <div class="text-muted">
+                                    <i class="bi bi-inbox display-4 mb-3 d-block opacity-50"></i>
+                                    <p class="h5">No se encontraron solicitudes</p>
+                                    <p class="small">Intenta ajustar los filtros de búsqueda.</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer de la tabla con paginación -->
+        {% if page_obj.has_other_pages %}
+        <div class="card-footer bg-white border-top-0 py-3">
+            <nav aria-label="Paginación">
+                <ul class="pagination justify-content-center mb-0">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link border-0 text-secondary"
+                            href="?page={{ page_obj.previous_page_number }}&estado={{ estado }}&tipo={{ tipo }}&urgente={{ urgente }}&q={{ busqueda }}">
+                            <i class="bi bi-chevron-left me-1"></i> Anterior
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link border-0 text-muted"><i class="bi bi-chevron-left me-1"></i>
+                            Anterior</span>
+                    </li>
+                    {% endif %}
+
+                    <li class="page-item disabled">
+                        <span class="page-link border-0 text-dark fw-bold">
+                            Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+                        </span>
+                    </li>
+
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link border-0 text-secondary"
+                            href="?page={{ page_obj.next_page_number }}&estado={{ estado }}&tipo={{ tipo }}&urgente={{ urgente }}&q={{ busqueda }}">
+                            Siguiente <i class="bi bi-chevron-right ms-1"></i>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link border-0 text-muted">Siguiente <i
+                                class="bi bi-chevron-right ms-1"></i></span>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Modal de Vista Rápida -->
+    <div class="modal fade" id="modalDetalleSolicitud" tabindex="-1" aria-labelledby="modalDetalleLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title" id="modalDetalleLabel">
+                        <i class="bi bi-file-earmark-text me-2"></i>
+                        <span id="modalTitulo">Solicitud</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body" id="modalContenido">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <a href="#" id="btnVerCompleto" class="btn btn-primary" target="_blank">
+                        <i class="bi bi-box-arrow-up-right me-2"></i>Ver detalle completo
+                    </a>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function verDetalleSolicitud(solicitudId) {
+        const modal = new bootstrap.Modal(document.getElementById('modalDetalleSolicitud'));
+        const modalContenido = document.getElementById('modalContenido');
+        const modalTitulo = document.getElementById('modalTitulo');
+        const btnVerCompleto = document.getElementById('btnVerCompleto');
+
+        // Mostrar loading
+        modalContenido.innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+        </div>
+    `;
+
+        // Actualizar link de ver completo
+        btnVerCompleto.href = `/solicitudes/${solicitudId}/`;
+
+        // Abrir modal
+        modal.show();
+
+        // Cargar datos via AJAX
+        fetch(`/solicitudes/${solicitudId}/ajax/`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Error al cargar la solicitud');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Actualizar título
+                modalTitulo.innerHTML = `Solicitud #${data.id} 
+                <span class="badge bg-${data.color_estado}">${data.estado}</span>
+                ${data.urgente ? '<span class="badge bg-danger ms-2"><i class="bi bi-exclamation-triangle me-1"></i>Urgente</span>' : ''}`;
+
+                // Generar HTML de productos
+                let productosHtml = '';
+                data.productos.forEach(prod => {
+                    productosHtml += `
+                    <tr>
+                        <td><code>${prod.codigo}</code></td>
+                        <td>${prod.descripcion}</td>
+                        <td>${prod.cantidad}</td>
+                    </tr>
+                `;
+                });
+
+                // Actualizar contenido
+                modalContenido.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2 mb-3">Información General</h6>
+                        <dl class="row">
+                            <dt class="col-sm-5">Fecha:</dt>
+                            <dd class="col-sm-7">${data.fecha} - ${data.hora}</dd>
+                            
+                            <dt class="col-sm-5">Tipo:</dt>
+                            <dd class="col-sm-7">${data.tipo}</dd>
+                            
+                            <dt class="col-sm-5">N° Pedido / OF:</dt>
+                            <dd class="col-sm-7">${data.numero_pedido}</dd>
+                            
+                            <dt class="col-sm-5">N° ST:</dt>
+                            <dd class="col-sm-7">${data.numero_st}</dd>
+                            
+                            <dt class="col-sm-5">Cliente:</dt>
+                            <dd class="col-sm-7"><strong>${data.cliente}</strong></dd>
+                            
+                            <dt class="col-sm-5">Bodega:</dt>
+                            <dd class="col-sm-7">${data.bodega}</dd>
+                            
+                            <dt class="col-sm-5">Transporte:</dt>
+                            <dd class="col-sm-7">${data.transporte}</dd>
+                        </dl>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2 mb-3">Descripción</h6>
+                        <p class="text-muted small">${data.descripcion}</p>
+                        
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">Observaciones</h6>
+                        <p class="text-muted small">${data.observacion}</p>
+                        
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">Metadatos</h6>
+                        <dl class="row small">
+                            <dt class="col-sm-5">Solicitante:</dt>
+                            <dd class="col-sm-7">${data.solicitante}</dd>
+                            
+                            <dt class="col-sm-5">Creado:</dt>
+                            <dd class="col-sm-7">${data.created_at}</dd>
+                            
+                            <dt class="col-sm-5">Actualizado:</dt>
+                            <dd class="col-sm-7">${data.updated_at}</dd>
+                        </dl>
+                    </div>
+                </div>
+                
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h6 class="border-bottom pb-2 mb-3">Productos (${data.productos.length})</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Descripción</th>
+                                        <th style="width: 120px;">Cantidad</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${productosHtml}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            })
+            .catch(error => {
+                modalContenido.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Error al cargar los detalles de la solicitud.
+                </div>
+            `;
+                console.error('Error:', error);
+            });
+    }
+</script>
+{% endblock %}

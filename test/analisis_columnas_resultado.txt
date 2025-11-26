@@ -1,0 +1,51 @@
+================================================================================
+ANÁLISIS DE COLUMNAS - HOJA: 'DESPACHOS 2025 '
+================================================================================
+
+Total de columnas: 33
+
+LISTA DE COLUMNAS:
+--------------------------------------------------------------------------------
+ 1. Fecha
+ 2. Hr de Pedido
+ 3. PC / OF
+ 4. NUMERO
+ 5. Cliente
+ 6. COD SAP
+ 7. NOMBRE
+ 8. CANTIDAD
+ 9. BODEGA
+10. UBICACIÓN
+11. Retira Cliente
+12. Observaciones
+13. ESTATUS
+14. Fecha de entrega
+15. Hr de Entrega
+16. Transferencia
+17. N° Guia
+18. STATUS
+19. Transporte
+20. OT
+21. sap
+22. Contabilizacion
+23. NUMERO DE BULTO
+24. MEDIDAS PARA ENVIO
+25. Peso
+26. HR MBALADO
+27. FECHA EMBALADO
+28. Fecha despacho
+29. Fecha actual
+30. Tot días en despacho
+31. LEAD TIME DESPACHO TOTAL
+32. CORTE HORARIO
+33. LEAD TIME REAL
+
+================================================================================
+PRIMERAS 5 FILAS (muestra de datos):
+================================================================================
+       Fecha Hr de Pedido  PC / OF      NUMERO                                             Cliente   COD SAP                                                     NOMBRE  CANTIDAD  BODEGA            UBICACIÓN Retira Cliente                                                                       Observaciones    ESTATUS     Fecha de entrega Hr de Entrega  Transferencia   N° Guia      STATUS      Transporte  OT  sap  Contabilizacion  NUMERO DE BULTO  MEDIDAS PARA ENVIO  Peso HR MBALADO FECHA EMBALADO  Fecha despacho Fecha actual  Tot días en despacho  LEAD TIME DESPACHO TOTAL  CORTE HORARIO  LEAD TIME REAL
+0 2025-10-01     15:46:00      NaN  PC 2509516                            GRV TRANSPORTES LIMITADA  35071069                                      BATERIA HIDUO 3786692         1  013-03       013-03-P2I0204             SI                                                      pagado, se reitera aviso 13-10  ENTREGADO          01/10/20025      15:47:00        26067.0  110724.0  DESPACHADO  RETIRA CLIENTE NaN  NaN              NaN              NaN                 NaN   NaN        NaN            NaN             NaN   2025-11-24                    54                       NaN            NaN             NaN
+1 2025-06-09     12:30:00      NaN  PC 2502144                          RODRIGO GARRIDO DOS SANTOS  36274279          TUBO FLEXIBLE HIDRAULICO ALTA PRESION PN 38620324         1     929       013-03-P3D1207             NO                                                                           CANCELADO  ENTREGADO  2025-09-06 00:00:00      13:10:00        23314.0       NaN   CANCELADO    CAMION PESCO NaN  NaN              NaN              NaN                 NaN   NaN        NaN            NaN             NaN   2025-11-24                   168                       NaN            NaN             NaN
+2 2025-07-14     09:08:00      NaN  PC 2506602                                     AMECO CHILE SPA  30701344                 FILTRO RETORNO GRUA NATIONAL 800D, P167162         2  013-03       013-03-P1I1902             NO  ESPERA DE VENDEDOR POR NUEVA DIRECCION DE DESPACHO // REPUESTOS DEVUELTOS A BODEGA  ENTREGADO           14/07/2025      09:20:00        24105.0       NaN   CANCELADO    CAMION PESCO NaN  NaN              NaN              NaN                 NaN   NaN   09:33:00        14/7/25             NaN   2025-11-24                   133                       NaN            NaN             NaN
+3 2025-07-14     09:08:00      NaN  PC 2506602                                     AMECO CHILE SPA  30701840  FILTRO ATMOSFERICO ESTNQ B7024. ACEITE HIDR.GRUA NATIONAL         2  013-03       013-03-P1I2302             NO  ESPERA DE VENDEDOR POR NUEVA DIRECCION DE DESPACHO // REPUESTOS DEVUELTOS A BODEGA  ENTREGADO           14/07/2025      09:20:00        24105.0       NaN   CANCELADO    CAMION PESCO NaN  NaN              NaN              NaN                 NaN   NaN   09:33:00        14/7/25             NaN   2025-11-24                   133                       NaN            NaN             NaN
+4 2025-09-24     16:28:00      NaN  PC 2509436  CENTRO DE GESTION AMBIENTAL Y SERVICIOS CRECER SPA  10502030                            CONTENEDOR HELESI 1100 LTS GRIS         4  013-05  013-05-CONTENEDORES             NO                                                                                 NaN        NaN                  NaN           NaN            NaN       NaN   CANCELADO    CAMION PESCO NaN  NaN              NaN              NaN                 NaN   NaN        NaN            NaN             NaN   2025-11-24                    61                       NaN            NaN             NaN

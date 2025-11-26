@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}Asistente IA - Sistema PESCO{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h2">
+            <i class="bi bi-robot me-2"></i>
+            Asistente IA
+        </h1>
+        <p class="text-muted mb-0">
+            Pega el contenido del correo o adjunta un pantallazo de SAP y la IA creará la solicitud.
+        </p>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <div class="mb-3">
+                <label for="mensaje" class="form-label">
+                    Texto del correo / instrucciones
+                </label>
+                <textarea
+                    id="mensaje"
+                    name="mensaje"
+                    rows="5"
+                    class="form-control"
+                    placeholder="Ejemplo: 'Ciro, por favor prepara pedido PC 25111045 para cliente XX con los códigos siguientes...'"
+                >{{ request.POST.mensaje }}</textarea>
+                <small class="text-muted">
+                    Puedes pegar aquí el contenido del correo o un resumen.
+                </small>
+            </div>
+
+            <div class="mb-3">
+                <label for="imagen" class="form-label">
+                    Pantallazo SAP (opcional)
+                </label>
+                <input
+                    type="file"
+                    id="imagen"
+                    name="imagen"
+                    class="form-control"
+                    accept="image/*"
+                >
+                <small class="text-muted">
+                    Si adjuntas una imagen, la IA intentará leer códigos y cantidades desde el pantallazo.
+                </small>
+            </div>
+
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-magic me-2"></i>
+                    Procesar con IA y crear solicitud
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if payload %}
+<div class="card">
+    <div class="card-header">
+        <strong>Payload IA (previo a crear solicitud)</strong>
+    </div>
+    <div class="card-body">
+        <pre class="mb-0" style="white-space: pre-wrap;">{{ payload|safe|json_script:"ia-payload" }}</pre>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+

@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+
+{% block title %}Nueva Solicitud - Sistema PESCO{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h2">
+            <i class="bi bi-file-earmark-plus me-2"></i>
+            Nueva Solicitud
+        </h1>
+        <p class="text-muted mb-0">Formulario de ingreso manual para el equipo administrativo.</p>
+    </div>
+    <a href="{% url 'solicitudes:lista' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-2"></i>Volver al listado
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post" novalidate id="formSolicitud">
+            {% csrf_token %}
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.tipo.label }}</label>
+                    {{ form.tipo }}
+                    {% if form.tipo.errors %}
+                        <div class="text-danger small mt-1">{{ form.tipo.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.numero_pedido.label }}</label>
+                    {{ form.numero_pedido }}
+                    <small class="text-muted">OF o número manual</small>
+                    {% if form.numero_pedido.errors %}
+                        <div class="text-danger small mt-1">{{ form.numero_pedido.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.cliente.label }}</label>
+                    {{ form.cliente }}
+                    {% if form.cliente.errors %}
+                        <div class="text-danger small mt-1">{{ form.cliente.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.bodega.label }}</label>
+                    {{ form.bodega }}
+                    {% if form.bodega.errors %}
+                        <div class="text-danger small mt-1">{{ form.bodega.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.transporte.label }}</label>
+                    {{ form.transporte }}
+                    {% if form.transporte.errors %}
+                        <div class="text-danger small mt-1">{{ form.transporte.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.estado.label }}</label>
+                    {{ form.estado }}
+                    {% if form.estado.errors %}
+                        <div class="text-danger small mt-1">{{ form.estado.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-3 d-flex align-items-center mt-4">
+                    <div class="form-check form-switch">
+                        {{ form.urgente }}
+                        <label class="form-check-label ms-2">{{ form.urgente.label }}</label>
+                    </div>
+                    {% if form.urgente.errors %}
+                        <div class="text-danger small ms-3">{{ form.urgente.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-12">
+                    <label class="form-label">{{ form.observacion.label }}</label>
+                    {{ form.observacion }}
+                    {% if form.observacion.errors %}
+                        <div class="text-danger small mt-1">{{ form.observacion.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+
+            </div>
+
+            <!-- Detalles adicionales -->
+            <hr class="my-4">
+            <h5>Productos adicionales</h5>
+            <p class="text-muted">
+                Usa estas líneas si la solicitud incluye más de un código de producto.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th style="width: 120px;">Cantidad</th>
+                            <th style="width: 80px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="detalle-rows">
+                        {{ formset.management_form }}
+                        {% for f in formset %}
+                        <tr>
+                            <td>
+                                {{ f.codigo }}
+                                {% if f.codigo.errors %}
+                                    <div class="text-danger small">{{ f.codigo.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ f.descripcion }}
+                                {% if f.descripcion.errors %}
+                                    <div class="text-danger small">{{ f.descripcion.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ f.cantidad }}
+                                {% if f.cantidad.errors %}
+                                    <div class="text-danger small">{{ f.cantidad.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if f.DELETE %}
+                                    <div class="form-check">
+                                        {{ f.DELETE }}
+                                        <label class="form-check-label small">Borrar</label>
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tbody id="empty-form-template" class="d-none">
+                        <tr>
+                            <td>{{ formset.empty_form.codigo }}</td>
+                            <td>{{ formset.empty_form.descripcion }}</td>
+                            <td>{{ formset.empty_form.cantidad }}</td>
+                            <td class="text-center">
+                                {% if formset.empty_form.DELETE %}
+                                    <div class="form-check">
+                                        {{ formset.empty_form.DELETE }}
+                                        <label class="form-check-label small">Borrar</label>
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnAgregarLinea">
+                    <i class="bi bi-plus-circle me-1"></i>Agregar línea
+                </button>
+                <small class="text-muted ms-2">Comienza con 5 líneas; puedes agregar hasta 45 productos.</small>
+            </div>
+
+            <div class="mt-4 d-flex justify-content-end">
+                <a href="{% url 'solicitudes:lista' %}" class="btn btn-light me-2">Cancelar</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save me-2"></i>Guardar Solicitud
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btnAgregar = document.getElementById('btnAgregarLinea');
+    const tbody = document.getElementById('detalle-rows');
+    const template = document.querySelector('#empty-form-template tr');
+    const totalFormsInput = document.getElementById('id_detalles-TOTAL_FORMS');
+    const maxForms = 45;
+
+    if (!btnAgregar || !tbody || !template || !totalFormsInput) return;
+
+    btnAgregar.addEventListener('click', function() {
+        let total = parseInt(totalFormsInput.value || '0', 10);
+        if (total >= maxForms) {
+            alert('Ya alcanzaste el máximo de 45 líneas de productos.');
+            return;
+        }
+
+        const newRow = template.cloneNode(true);
+        let html = newRow.innerHTML.replace(/__prefix__/g, total);
+        newRow.innerHTML = html;
+        tbody.appendChild(newRow);
+        totalFormsInput.value = total + 1;
+    });
+});
+</script>
+{% endblock %}

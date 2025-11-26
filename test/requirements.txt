@@ -1,0 +1,39 @@
+# Core Django
+Django==4.2.11
+python-dotenv==1.1.1
+
+# Base de datos PostgreSQL (Supabase)
+psycopg2-binary==2.9.10
+
+# Seguridad - Argon2 para hashing de contraseñas
+argon2-cffi==23.1.0
+
+# API REST
+djangorestframework==3.14.0
+django-cors-headers==4.6.0
+
+# Rate Limiting (seguridad)
+django-ratelimit==4.1.0
+
+# Excel (para reportes)
+pandas==2.1.4
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# PDF y Etiquetas
+reportlab==4.0.8
+python-barcode==0.15.1
+Pillow==10.1.0
+
+# Deployment
+gunicorn==21.2.0
+whitenoise==6.6.0
+
+# IA - Google Gemini
+google-generativeai==0.8.5
+
+# Supabase (opcional, para Storage)
+supabase==2.3.0
+
+# Utilidades
+pytz==2023.3

@@ -1,0 +1,56 @@
+================================================================================
+ANÁLISIS DE ARCHIVO DE STOCK
+================================================================================
+
+Archivo: files/stock.xlsx
+Total de columnas: 13
+Total de filas (muestra): 10
+
+LISTA DE COLUMNAS:
+--------------------------------------------------------------------------------
+ 1. #
+ 2. Codigo
+ 3. Descripcion
+ 4. Cod.Grupo
+ 5. Descripcion Grupo
+ 6. Cod.Bodega
+ 7. Descripcion Bodega
+ 8. Ubicacion
+ 9. Ubicacion 2
+10. Stock
+11. Precio $
+12. Total $
+13. Categoria
+
+================================================================================
+PRIMERAS 10 FILAS:
+================================================================================
+    #    Codigo                                                        Descripcion  Cod.Grupo     Descripcion Grupo Cod.Bodega   Descripcion Bodega         Ubicacion          Ubicacion 2  Stock    Precio $      Total $  Categoria
+0   1  10105006                       CAJA RECOLECTOR USIMECA MODELO ALPHA DE 15M3        107  EQUIPOS MEDIO AMBIEN     013-02  PESCO STGO SITIO 02          SANTIAGO                  NaN      4   39482.009   157928.038        NaN
+1   2  10105009             CAJA RECOLECTOR USIMECA STD MODELO ALPHA 19M3 – MANUAL        107  EQUIPOS MEDIO AMBIEN          0   PRE-BODEGA CENTRAL          SANTIAGO                  NaN      2   37914.000    75828.000        NaN
+2   3  10105009             CAJA RECOLECTOR USIMECA STD MODELO ALPHA 19M3 – MANUAL        107  EQUIPOS MEDIO AMBIEN     013-02  PESCO STGO SITIO 02          SANTIAGO                  NaN     37   41298.214  1528033.911        NaN
+3   4  10105010  CAJA RECOLECTOR USIMECA STD MODELO ALPHA 19M3 – SEMI – AUTOMATICA        107  EQUIPOS MEDIO AMBIEN     013-02  PESCO STGO SITIO 02          SANTIAGO                  NaN      4   44919.861   179679.445        NaN
+4   5  10105014                   CAJA RECOLECTOR USIMECA STD IPANEMA 6M3 - MANUAL        107  EQUIPOS MEDIO AMBIEN     013-02  PESCO STGO SITIO 02          SANTIAGO                  NaN      1   28544.519    28544.519        NaN
+5   6  10202046                                         CAMION AROCS 3342 6X4 4800        117     CAMIONES - CHASIS     013-06  PESCO STGO GALPONES          SANTIAGO      013-06-CAMIONES      1  146513.449   146513.449        NaN
+6   7  10202049                                  CAMION FREIGHTLINER M2 106 6x4 AT        117     CAMIONES - CHASIS     013-06  PESCO STGO GALPONES          SANTIAGO      013-06-CAMIONES      1  106230.817   106230.817        NaN
+7   8  10401003                           CARRO BOMBA TANKER 7000 LTS MB ATEGO 4X2        108   EQUIPOS EMERGENCIAS        980             KAUFMANN  SANTIAGO EXTERNA          980-CHILLAN      1  208340.478   208340.478        NaN
+8   9  10403004                            CARRO MINI PUMPER CON SISTEMA DE ESPUMA        108   EQUIPOS EMERGENCIAS     013-06  PESCO STGO GALPONES          SANTIAGO      013-06-CAMIONES      2  404464.018   808928.036        NaN
+9  10  10501002                                   CONTENEDOR HELESI 1100 LTS VERDE        106          CONTENEDORES     013-05  PESCO STGO SITIO 01          SANTIAGO  013-05-CONTENEDORES    434     173.634    75357.315        NaN
+
+================================================================================
+TIPOS DE DATOS:
+================================================================================
+#                       int64
+Codigo                  int64
+Descripcion            object
+Cod.Grupo               int64
+Descripcion Grupo      object
+Cod.Bodega             object
+Descripcion Bodega     object
+Ubicacion              object
+Ubicacion 2            object
+Stock                   int64
+Precio $              float64
+Total $               float64
+Categoria             float64
+dtype: object

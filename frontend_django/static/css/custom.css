@@ -1,0 +1,228 @@
+/**
+ * CSS Personalizado Sistema PESCO
+ * Basado en la paleta de colores del dashboard
+ * Colores: Azul turquesa, Verde, Amarillo, Rojo
+ */
+
+/* ============================================
+   VARIABLES CSS (Colores PESCO)
+   ============================================ */
+:root {
+    /* Colores principales */
+    --pesco-primary: #00B4D8;      /* Azul turquesa - Principal */
+    --pesco-success: #4CAF50;      /* Verde - Completado */
+    --pesco-warning: #FFC107;      /* Amarillo - Pendiente */
+    --pesco-danger: #F44336;       /* Rojo - Cancelado/Crítico */
+    --pesco-info: #17A2B8;         /* Azul info */
+    --pesco-secondary: #6C757D;    /* Gris - Secundario */
+    --pesco-light: #F8F9FA;        /* Fondo claro */
+    --pesco-dark: #212529;         /* Texto oscuro */
+}
+
+/* ============================================
+   OVERRIDE DE BOOTSTRAP
+   ============================================ */
+
+/* Navbar */
+.navbar.bg-pesco-primary,
+.bg-pesco-primary {
+    background-color: var(--pesco-primary) !important;
+}
+
+/* Botones */
+.btn-primary {
+    background-color: var(--pesco-primary);
+    border-color: var(--pesco-primary);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+    background-color: #0096B8;
+    border-color: #0096B8;
+}
+
+.btn-outline-primary {
+    color: var(--pesco-primary);
+    border-color: var(--pesco-primary);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--pesco-primary);
+    border-color: var(--pesco-primary);
+}
+
+/* Links */
+a {
+    color: var(--pesco-primary);
+}
+
+a:hover {
+    color: #0096B8;
+}
+
+/* ============================================
+   CARDS DE KPIs
+   ============================================ */
+.card-kpi {
+    border-left: 4px solid var(--pesco-primary);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card-kpi:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.card-kpi.border-primary {
+    border-left-color: var(--pesco-primary);
+}
+
+.card-kpi.border-warning {
+    border-left-color: var(--pesco-warning);
+}
+
+.card-kpi.border-success {
+    border-left-color: var(--pesco-success);
+}
+
+.card-kpi.border-danger {
+    border-left-color: var(--pesco-danger);
+}
+
+.card-kpi.border-info {
+    border-left-color: var(--pesco-info);
+}
+
+/* ============================================
+   BADGES DE ESTADOS
+   ============================================ */
+.badge-pendiente,
+.bg-warning {
+    background-color: var(--pesco-warning) !important;
+    color: #000;
+}
+
+.badge-en-despacho,
+.bg-info {
+    background-color: var(--pesco-info) !important;
+}
+
+.badge-embalado {
+    background-color: #8BC34A !important; /* Verde claro */
+}
+
+.badge-despachado,
+.bg-success {
+    background-color: var(--pesco-success) !important;
+}
+
+.badge-cancelado,
+.bg-danger {
+    background-color: var(--pesco-danger) !important;
+}
+
+.bg-primary {
+    background-color: var(--pesco-primary) !important;
+}
+
+/* ============================================
+   TABLAS
+   ============================================ */
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 180, 216, 0.05);
+}
+
+.table thead {
+    background-color: var(--pesco-light);
+}
+
+/* ============================================
+   FORMULARIOS
+   ============================================ */
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--pesco-primary);
+    box-shadow: 0 0 0 0.2rem rgba(0, 180, 216, 0.25);
+}
+
+/* ============================================
+   ALERTAS
+   ============================================ */
+.alert-info {
+    background-color: rgba(0, 180, 216, 0.1);
+    border-color: var(--pesco-primary);
+    color: var(--pesco-dark);
+}
+
+/* ============================================
+   MAIN CONTENT
+   ============================================ */
+main {
+    background-color: #f5f5f5;
+    min-height: calc(100vh - 56px);
+}
+
+/* ============================================
+   UTILIDADES
+   ============================================ */
+.text-pesco-primary {
+    color: var(--pesco-primary) !important;
+}
+
+.text-pesco-success {
+    color: var(--pesco-success) !important;
+}
+
+.text-pesco-warning {
+    color: var(--pesco-warning) !important;
+}
+
+.text-pesco-danger {
+    color: var(--pesco-danger) !important;
+}
+
+/* Animaciones */
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Loading spinner */
+.spinner-pesco {
+    border: 4px solid rgba(0, 180, 216, 0.1);
+    border-left-color: var(--pesco-primary);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+    .card-kpi {
+        margin-bottom: 1rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+}
+

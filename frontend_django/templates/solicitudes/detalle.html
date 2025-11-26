@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+
+{% block title %}Detalle Solicitud #{{ solicitud.id }} - Sistema PESCO{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h2">
+            <i class="bi bi-file-earmark-text me-2"></i>
+            Solicitud #{{ solicitud.id }}
+        </h1>
+        <span class="badge bg-{{ solicitud.color_estado }}">
+            {{ solicitud.get_estado_display }}
+        </span>
+        {% if solicitud.urgente %}
+            <span class="badge bg-danger ms-2">
+                <i class="bi bi-exclamation-triangle me-1"></i>Urgente
+            </span>
+        {% endif %}
+    </div>
+    <a href="{% url 'solicitudes:lista' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-2"></i>Volver
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Información de la Solicitud</strong>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Fecha</dt>
+                    <dd class="col-sm-8">{{ solicitud.fecha_solicitud|date:"d/m/Y" }} - {{ solicitud.hora_solicitud|time:"H:i" }}</dd>
+
+                    <dt class="col-sm-4">Tipo</dt>
+                    <dd class="col-sm-8">{{ solicitud.get_tipo_display }}</dd>
+
+                    <dt class="col-sm-4">N° Pedido / OF</dt>
+                    <dd class="col-sm-8">{{ solicitud.numero_pedido|default:"-" }}</dd>
+
+                    <dt class="col-sm-4">N° ST</dt>
+                    <dd class="col-sm-8">{{ solicitud.numero_st|default:"-" }}</dd>
+
+                    <dt class="col-sm-4">Cliente</dt>
+                    <dd class="col-sm-8">{{ solicitud.cliente }}</dd>
+
+                    <dt class="col-sm-4">Código</dt>
+                    <dd class="col-sm-8"><code>{{ solicitud.codigo }}</code></dd>
+
+                    <dt class="col-sm-4">Cantidad</dt>
+                    <dd class="col-sm-8">{{ solicitud.cantidad_solicitada }}</dd>
+
+                    <dt class="col-sm-4">Bodega</dt>
+                    <dd class="col-sm-8">{{ solicitud.bodega }}</dd>
+
+                    <dt class="col-sm-4">Transporte</dt>
+                    <dd class="col-sm-8">{{ solicitud.get_transporte_display }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Descripción</strong>
+            </div>
+            <div class="card-body">
+                <p class="mb-0">{{ solicitud.descripcion|linebreaks }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Observaciones</strong>
+            </div>
+            <div class="card-body">
+                {% if solicitud.observacion %}
+                    <p class="mb-0">{{ solicitud.observacion|linebreaks }}</p>
+                {% else %}
+                    <p class="text-muted mb-0">Sin observaciones.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Productos</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Descripción</th>
+                                <th style="width: 120px;">Cantidad</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if detalles %}
+                                {# Para solicitudes nuevas con tabla de detalles, mostrar solo los detalles #}
+                                {% for det in detalles %}
+                                <tr>
+                                    <td><code>{{ det.codigo }}</code></td>
+                                    <td>{{ det.descripcion }}</td>
+                                    <td>{{ det.cantidad }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                {# Para solicitudes antiguas sin detalles, mostrar la línea de cabecera #}
+                                <tr>
+                                    <td><code>{{ solicitud.codigo }}</code></td>
+                                    <td>{{ solicitud.descripcion }}</td>
+                                    <td>{{ solicitud.cantidad_solicitada }}</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <strong>Metadatos</strong>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Solicitante</dt>
+                    <dd class="col-sm-8">
+                        {{ solicitud.solicitante.nombre_completo|default:solicitud.solicitante.username }}
+                    </dd>
+
+                    <dt class="col-sm-4">Creado</dt>
+                    <dd class="col-sm-8">{{ solicitud.created_at|date:"d/m/Y H:i" }}</dd>
+
+                    <dt class="col-sm-4">Actualizado</dt>
+                    <dd class="col-sm-8">{{ solicitud.updated_at|date:"d/m/Y H:i" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
