@@ -53,10 +53,12 @@ INSTALLED_APPS = [
     'core',
     'frontend_django',
     'solicitudes',
+    'configuracion',
     'bodega',
     'despacho',
     'guias',
     'reportes',
+    'inventario',  # Gestión de stock SAP
 ]
 
 MIDDLEWARE = [

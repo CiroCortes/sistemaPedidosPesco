@@ -1,5 +1,16 @@
 from django.db import models
+from django.utils import timezone
+
 from core.models import Usuario
+from solicitudes.models import Solicitud, SolicitudDetalle
+
+
+def get_local_date():
+    return timezone.localdate()
+
+
+def get_local_time():
+    return timezone.localtime().time()
 
 class Stock(models.Model):
     """
@@ -85,3 +96,101 @@ class CargaStock(models.Model):
 
     def __str__(self):
         return f"Carga {self.id} - {self.fecha_carga.strftime('%d/%m/%Y')}"
+
+
+class StockReserva(models.Model):
+    """
+    Reserva de stock asociada a un detalle de solicitud.
+    Permite comprometer unidades para evitar duplicidades.
+    """
+    ESTADOS = [
+        ('reservada', 'Reservada'),
+        ('consumida', 'Consumida'),
+        ('liberada', 'Liberada'),
+    ]
+
+    detalle = models.OneToOneField(
+        SolicitudDetalle,
+        on_delete=models.CASCADE,
+        related_name='reserva'
+    )
+    solicitud = models.ForeignKey(
+        Solicitud,
+        on_delete=models.CASCADE,
+        related_name='reservas'
+    )
+    codigo = models.CharField(max_length=50, db_index=True)
+    bodega = models.CharField(max_length=50, db_index=True)
+    cantidad = models.PositiveIntegerField()
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='reservada')
+    observacion = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'bodega_stock_reservas'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['codigo', 'bodega']),
+            models.Index(fields=['estado']),
+        ]
+
+    def __str__(self):
+        return f"Reserva {self.codigo} ({self.cantidad}) - {self.get_estado_display()}"
+
+    def marcar_consumida(self):
+        self.estado = 'consumida'
+        self.save(update_fields=['estado', 'updated_at'])
+
+    def liberar(self):
+        self.estado = 'liberada'
+        self.save(update_fields=['estado', 'updated_at'])
+
+
+class BodegaTransferencia(models.Model):
+    """
+    Registro de transferencias realizadas por bodega hacia despacho.
+    """
+    solicitud = models.ForeignKey(
+        Solicitud,
+        on_delete=models.CASCADE,
+        related_name='transferencias'
+    )
+    detalle = models.ForeignKey(
+        SolicitudDetalle,
+        on_delete=models.CASCADE,
+        related_name='transferencias'
+    )
+    reserva = models.ForeignKey(
+        StockReserva,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transferencias'
+    )
+    numero_transferencia = models.CharField(max_length=50)
+    fecha_transferencia = models.DateField(default=get_local_date)
+    hora_transferencia = models.TimeField(default=get_local_time)
+    bodega_origen = models.CharField(max_length=50)
+    bodega_destino = models.CharField(max_length=50, default='013')
+    cantidad = models.PositiveIntegerField()
+    registrado_por = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='transferencias_registradas'
+    )
+    observaciones = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'bodega_transferencias'
+        ordering = ['-fecha_transferencia', '-hora_transferencia']
+        indexes = [
+            models.Index(fields=['numero_transferencia']),
+            models.Index(fields=['fecha_transferencia', 'hora_transferencia']),
+            models.Index(fields=['bodega_origen']),
+        ]
+
+    def __str__(self):
+        return f"Transferencia {self.numero_transferencia} - {self.detalle.codigo}"

@@ -3,6 +3,8 @@ from django.conf import settings
 from django.utils import timezone
 import pytz
 
+from configuracion.models import EstadoWorkflow, TransporteConfig
+
 
 def get_chile_date():
     """Retorna la fecha actual en la zona horaria de Chile"""
@@ -30,24 +32,6 @@ class Solicitud(models.Model):
         ('OF', 'Oficina'),
         ('RM', 'Retiro de Mercancías'),
     ]
-    
-    ESTADOS = [
-        ('pendiente', 'Pendiente'),
-        ('en_despacho', 'En Despacho'),
-        ('embalado', 'Embalado'),
-        ('despachado', 'Despachado'),
-        ('cancelado', 'Cancelado'),
-    ]
-    
-    TRANSPORTES = [
-        ('PESCO', 'Camión PESCO'),
-        ('VARMONTT', 'Varmontt'),
-        ('STARKEN', 'Starken'),
-        ('KAIZEN', 'Kaizen'),
-        ('RETIRA_CLIENTE', 'Retira cliente'),
-        ('OTRO', 'Otro / Coordinado'),
-    ]
-
     # Información básica
     fecha_solicitud = models.DateField(
         default=get_chile_date,
@@ -73,6 +57,18 @@ class Solicitud(models.Model):
         blank=True,
         editable=False,
         verbose_name='Número ST automático'
+    )
+    numero_ot = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name='Número OT',
+        help_text='Orden de transporte asignada por el transportista externo'
+    )
+    numero_guia_despacho = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name='Número de Guía/Factura',
+        help_text='Número de guía o factura que confirma el despacho'
     )
     cliente = models.CharField(
         max_length=200,
@@ -100,8 +96,7 @@ class Solicitud(models.Model):
         verbose_name='Bodega origen'
     )
     transporte = models.CharField(
-        max_length=20,
-        choices=TRANSPORTES,
+        max_length=50,
         default='PESCO',
         verbose_name='Transporte'
     )
@@ -112,8 +107,7 @@ class Solicitud(models.Model):
     
     # Estado y prioridad
     estado = models.CharField(
-        max_length=20,
-        choices=ESTADOS,
+        max_length=50,
         default='pendiente',
         verbose_name='Estado',
         db_index=True
@@ -122,6 +116,11 @@ class Solicitud(models.Model):
         default=False,
         verbose_name='¿Es urgente?',
         db_index=True
+    )
+    afecta_stock = models.BooleanField(
+        default=True,
+        verbose_name='¿Afecta stock?',
+        help_text='Si es False, no se descuenta stock (órdenes especiales, traslados, etc.)'
     )
     
     # Relaciones
@@ -163,6 +162,7 @@ class Solicitud(models.Model):
             
             # Índice para búsquedas por número de pedido
             models.Index(fields=['numero_pedido'], name='idx_numero_pedido'),
+            models.Index(fields=['numero_ot'], name='idx_numero_ot'),
             
             # Índice para búsquedas por número ST
             models.Index(fields=['numero_st'], name='idx_numero_st'),
@@ -211,27 +211,29 @@ class Solicitud(models.Model):
         """Verifica si puede cambiar a estado despachado"""
         return self.estado == 'embalado'
     
+    def estado_config(self):
+        return EstadoWorkflow.obtener(EstadoWorkflow.TIPO_SOLICITUD, self.estado)
+
+    def get_estado_display(self):
+        return EstadoWorkflow.etiqueta(EstadoWorkflow.TIPO_SOLICITUD, self.estado)
+
     def color_estado(self):
         """Retorna el color CSS según el estado"""
-        colores = {
-            'pendiente': 'warning',
-            'en_despacho': 'info',
-            'embalado': 'success',
-            'despachado': 'primary',
-            'cancelado': 'danger',
-        }
-        return colores.get(self.estado, 'secondary')
+        return EstadoWorkflow.color_para(EstadoWorkflow.TIPO_SOLICITUD, self.estado)
     
     def icono_estado(self):
         """Retorna el icono Bootstrap según el estado"""
-        iconos = {
-            'pendiente': 'clock',
-            'en_despacho': 'truck',
-            'embalado': 'box-seam',
-            'despachado': 'check-circle',
-            'cancelado': 'x-circle',
-        }
-        return iconos.get(self.estado, 'circle')
+        return EstadoWorkflow.icono_para(EstadoWorkflow.TIPO_SOLICITUD, self.estado)
+
+    def transporte_config(self):
+        return TransporteConfig.obtener(self.transporte)
+
+    def get_transporte_display(self):
+        return TransporteConfig.etiqueta(self.transporte)
+
+    def transporte_requiere_ot(self):
+        config = self.transporte_config()
+        return config.requiere_ot if config else False
 
     def save(self, *args, **kwargs):
         """
@@ -296,6 +298,42 @@ class SolicitudDetalle(models.Model):
     cantidad = models.PositiveIntegerField(
         verbose_name='Cantidad',
     )
+    
+    # Bodega y estado por producto
+    bodega = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name='Bodega',
+        help_text='Bodega donde se encuentra este producto',
+        db_index=True
+    )
+    estado_bodega = models.CharField(
+        max_length=30,
+        default='pendiente',
+        verbose_name='Estado en bodega',
+        db_index=True
+    )
+    bulto = models.ForeignKey(
+        'despacho.Bulto',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='detalles',
+        verbose_name='Bulto asignado'
+    )
+    preparado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='productos_preparados',
+        verbose_name='Preparado por'
+    )
+    fecha_preparacion = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Fecha de preparaci\u00f3n'
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name='Creado el',
@@ -315,7 +353,18 @@ class SolicitudDetalle(models.Model):
             
             # Índice para búsquedas por código de producto
             models.Index(fields=['codigo'], name='idx_detalle_codigo'),
+            
+            # NUEVOS: Índices para bodegas
+            models.Index(fields=['bodega'], name='idx_detalle_bodega'),
+            models.Index(fields=['estado_bodega'], name='idx_detalle_estado_bod'),
+            models.Index(fields=['bodega', 'estado_bodega'], name='idx_detalle_bod_estado'),
         ]
 
     def __str__(self):
         return f"{self.codigo} x {self.cantidad} (Solicitud #{self.solicitud_id})"
+
+    def estado_bodega_config(self):
+        return EstadoWorkflow.obtener(EstadoWorkflow.TIPO_DETALLE, self.estado_bodega)
+
+    def get_estado_bodega_display(self):
+        return EstadoWorkflow.etiqueta(EstadoWorkflow.TIPO_DETALLE, self.estado_bodega)

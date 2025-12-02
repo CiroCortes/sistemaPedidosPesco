@@ -2,6 +2,13 @@
 
 {% block title %}Detalle Solicitud #{{ solicitud.id }} - Sistema PESCO{% endblock %}
 
+{% block extra_css %}
+<style>
+.estado-badge { cursor: pointer; }
+.estado-badge:hover { opacity: 0.8; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
     <div>
@@ -9,18 +16,49 @@
             <i class="bi bi-file-earmark-text me-2"></i>
             Solicitud #{{ solicitud.id }}
         </h1>
-        <span class="badge bg-{{ solicitud.color_estado }}">
+        <span class="badge bg-{{ solicitud.color_estado }}" id="estadoBadge">
             {{ solicitud.get_estado_display }}
         </span>
         {% if solicitud.urgente %}
-            <span class="badge bg-danger ms-2">
-                <i class="bi bi-exclamation-triangle me-1"></i>Urgente
-            </span>
+        <span class="badge bg-danger ms-2">
+            <i class="bi bi-exclamation-triangle me-1"></i>Urgente
+        </span>
+        {% endif %}
+        {% if not solicitud.afecta_stock %}
+        <span class="badge bg-info text-dark ms-2" title="Esta solicitud no afecta stock">
+            <i class="bi bi-info-circle me-1"></i>Sin afectar stock
+        </span>
         {% endif %}
     </div>
-    <a href="{% url 'solicitudes:lista' %}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left me-2"></i>Volver
-    </a>
+    <div class="d-flex gap-2">
+        {% if request.user.es_admin %}
+        <a href="{% url 'solicitudes:editar' solicitud.id %}" class="btn btn-primary">
+            <i class="bi bi-pencil me-1"></i>Editar
+        </a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-gear me-1"></i>Acciones
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="#" onclick="cambiarEstado(); return false;">
+                    <i class="bi bi-arrow-repeat me-2"></i>Cambiar Estado
+                </a></li>
+                <li><a class="dropdown-item" href="#" onclick="toggleAfectaStock(); return false;">
+                    <i class="bi bi-box me-2"></i>{{ solicitud.afecta_stock|yesno:"No afectar,Afectar" }} Stock
+                </a></li>
+                <li><hr class="dropdown-divider"></li>
+                {% if solicitud.estado != 'despachado' %}
+                <li><a class="dropdown-item text-success" href="#" onclick="marcarDespachado(); return false;">
+                    <i class="bi bi-check-circle me-2"></i>Marcar como Despachado
+                </a></li>
+                {% endif %}
+            </ul>
+        </div>
+        {% endif %}
+        <a href="{% url 'solicitudes:lista' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Volver
+        </a>
+    </div>
 </div>
 
 <div class="row">
@@ -32,7 +70,8 @@
             <div class="card-body">
                 <dl class="row mb-0">
                     <dt class="col-sm-4">Fecha</dt>
-                    <dd class="col-sm-8">{{ solicitud.fecha_solicitud|date:"d/m/Y" }} - {{ solicitud.hora_solicitud|time:"H:i" }}</dd>
+                    <dd class="col-sm-8">{{ solicitud.fecha_solicitud|date:"d/m/Y" }} - {{
+                        solicitud.hora_solicitud|time:"H:i" }}</dd>
 
                     <dt class="col-sm-4">Tipo</dt>
                     <dd class="col-sm-8">{{ solicitud.get_tipo_display }}</dd>
@@ -43,79 +82,151 @@
                     <dt class="col-sm-4">N° ST</dt>
                     <dd class="col-sm-8">{{ solicitud.numero_st|default:"-" }}</dd>
 
+                    <dt class="col-sm-4">N° OT</dt>
+                    <dd class="col-sm-8">{{ solicitud.numero_ot|default:"-" }}</dd>
+
+                    {% if solicitud.numero_guia_despacho %}
+                    <dt class="col-sm-4">Guía/Factura</dt>
+                    <dd class="col-sm-8"><span class="badge bg-success">{{ solicitud.numero_guia_despacho }}</span></dd>
+                    {% endif %}
+
                     <dt class="col-sm-4">Cliente</dt>
                     <dd class="col-sm-8">{{ solicitud.cliente }}</dd>
 
-                    <dt class="col-sm-4">Código</dt>
-                    <dd class="col-sm-8"><code>{{ solicitud.codigo }}</code></dd>
-
-                    <dt class="col-sm-4">Cantidad</dt>
-                    <dd class="col-sm-8">{{ solicitud.cantidad_solicitada }}</dd>
-
                     <dt class="col-sm-4">Bodega</dt>
-                    <dd class="col-sm-8">{{ solicitud.bodega }}</dd>
+                    <dd class="col-sm-8">{{ solicitud.bodega|default:"-" }}</dd>
 
                     <dt class="col-sm-4">Transporte</dt>
                     <dd class="col-sm-8">{{ solicitud.get_transporte_display }}</dd>
+                    
+                    <dt class="col-sm-4">Afecta Stock</dt>
+                    <dd class="col-sm-8">
+                        <span class="badge bg-{{ solicitud.afecta_stock|yesno:'success,warning' }}">
+                            {{ solicitud.afecta_stock|yesno:"Sí,No" }}
+                        </span>
+                    </dd>
                 </dl>
             </div>
         </div>
 
         <div class="card mb-3">
             <div class="card-header">
-                <strong>Descripción</strong>
+                <strong>Observaciones</strong>
             </div>
             <div class="card-body">
-                <p class="mb-0">{{ solicitud.descripcion|linebreaks }}</p>
+                {% if solicitud.observacion %}
+                <p class="mb-0">{{ solicitud.observacion|linebreaks }}</p>
+                {% else %}
+                <p class="text-muted mb-0">Sin observaciones.</p>
+                {% endif %}
             </div>
         </div>
     </div>
 
     <div class="col-lg-6">
+        {% with bultos=solicitud.bultos.all %}
+        {% if bultos %}
         <div class="card mb-3">
-            <div class="card-header">
-                <strong>Observaciones</strong>
+            <div class="card-header bg-primary text-white">
+                <strong><i class="bi bi-box-seam me-2"></i>Bultos Asociados ({{ bultos.count }})</strong>
             </div>
-            <div class="card-body">
-                {% if solicitud.observacion %}
-                    <p class="mb-0">{{ solicitud.observacion|linebreaks }}</p>
-                {% else %}
-                    <p class="text-muted mb-0">Sin observaciones.</p>
-                {% endif %}
+            <div class="card-body p-2">
+                {% for bulto in bultos %}
+                <div class="card mb-2 border-secondary">
+                    <div class="card-header bg-light py-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ bulto.codigo }}</strong>
+                                <span class="badge bg-secondary ms-2">{{ bulto.get_estado_display }}</span>
+                            </div>
+                            <a href="{% url 'despacho:detalle_bulto' bulto.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-body p-2">
+                        <div class="row g-2 small">
+                            <div class="col-6"><span class="text-muted">Tipo:</span> {{ bulto.get_tipo_display }}</div>
+                            <div class="col-6"><span class="text-muted">Transportista:</span> {{ bulto.get_transportista_display }}</div>
+                            <div class="col-3"><span class="text-muted">Peso:</span> {{ bulto.peso_total }} kg</div>
+                            <div class="col-3"><span class="text-muted">Largo:</span> {{ bulto.largo_cm }} cm</div>
+                            <div class="col-3"><span class="text-muted">Ancho:</span> {{ bulto.ancho_cm }} cm</div>
+                            <div class="col-3"><span class="text-muted">Alto:</span> {{ bulto.alto_cm }} cm</div>
+                            <div class="col-12">
+                                <span class="text-muted">Códigos:</span>
+                                <span class="badge bg-dark">{{ bulto.detalles.count }}</span>
+                                {% for det in bulto.detalles.all %}
+                                <code class="ms-1">{{ det.codigo }}</code>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
         </div>
-
+        {% endif %}
+        {% endwith %}
+        
         <div class="card mb-3">
             <div class="card-header">
                 <strong>Productos</strong>
+                {% with pendientes=detalles|length|add:0 en_bultos=0 %}
+                {% for det in detalles %}
+                    {% if det.bulto %}{% with en_bultos=en_bultos|add:1 %}{% endwith %}{% endif %}
+                {% endfor %}
+                {% endwith %}
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-sm mb-0">
+                    <table class="table table-sm table-hover mb-0">
                         <thead>
                             <tr>
                                 <th>Código</th>
                                 <th>Descripción</th>
-                                <th style="width: 120px;">Cantidad</th>
+                                <th>Cantidad</th>
+                                <th>Bodega</th>
+                                <th>Estado</th>
+                                <th>Bulto</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% if detalles %}
-                                {# Para solicitudes nuevas con tabla de detalles, mostrar solo los detalles #}
-                                {% for det in detalles %}
-                                <tr>
-                                    <td><code>{{ det.codigo }}</code></td>
-                                    <td>{{ det.descripcion }}</td>
-                                    <td>{{ det.cantidad }}</td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                {# Para solicitudes antiguas sin detalles, mostrar la línea de cabecera #}
-                                <tr>
-                                    <td><code>{{ solicitud.codigo }}</code></td>
-                                    <td>{{ solicitud.descripcion }}</td>
-                                    <td>{{ solicitud.cantidad_solicitada }}</td>
-                                </tr>
+                            {% for detalle in detalles %}
+                            <tr {% if not detalle.bulto %}class="table-warning"{% endif %}>
+                                <td><code>{{ detalle.codigo }}</code></td>
+                                <td>{{ detalle.descripcion|truncatewords:5|default:"-" }}</td>
+                                <td>{{ detalle.cantidad }}</td>
+                                <td>{{ detalle.bodega|default:"-" }}</td>
+                                <td>
+                                    <span class="badge bg-secondary">
+                                        {{ detalle.get_estado_bodega_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if detalle.bulto %}
+                                    <a href="{% url 'despacho:detalle_bulto' detalle.bulto.id %}" class="badge bg-primary text-decoration-none">
+                                        <i class="bi bi-box-seam me-1"></i>{{ detalle.bulto.codigo }}
+                                    </a>
+                                    {% else %}
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">
+                                    No hay detalles de productos. Solicitud antigua con datos en cabecera.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not detalles %}
+                            <tr>
+                                <td><code>{{ solicitud.codigo }}</code></td>
+                                <td>{{ solicitud.descripcion|truncatewords:5 }}</td>
+                                <td>{{ solicitud.cantidad_solicitada }}</td>
+                                <td>{{ solicitud.bodega|default:"-" }}</td>
+                                <td colspan="2" class="text-muted">Solicitud antigua</td>
+                            </tr>
                             {% endif %}
                         </tbody>
                     </table>
@@ -146,3 +257,129 @@
 </div>
 {% endblock %}
 
+{% block extra_js %}
+{% if request.user.es_admin %}
+<script>
+function cambiarEstado() {
+    const estados = [
+        { value: 'pendiente', label: 'Pendiente' },
+        { value: 'en_despacho', label: 'En Despacho' },
+        { value: 'embalado', label: 'Embalado' },
+        { value: 'listo_despacho', label: 'Listo para Despacho' },
+        { value: 'en_ruta', label: 'En Ruta' },
+        { value: 'despachado', label: 'Despachado' },
+        { value: 'cancelado', label: 'Cancelado' }
+    ];
+    
+    let opciones = estados.map(e => `<option value="${e.value}">${e.label}</option>`).join('');
+    
+    Swal.fire({
+        title: 'Cambiar Estado',
+        html: `<select id="nuevoEstado" class="form-select">${opciones}</select>`,
+        showCancelButton: true,
+        confirmButtonText: 'Cambiar',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            return document.getElementById('nuevoEstado').value;
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const nuevoEstado = result.value;
+            
+            if (nuevoEstado === 'despachado') {
+                Swal.fire({
+                    title: '¿Estás seguro?',
+                    text: 'Al marcar como despachado se descontará el stock de bodega 013',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, despachar',
+                    cancelButtonText: 'Cancelar'
+                }).then((confirmResult) => {
+                    if (confirmResult.isConfirmed) {
+                        ejecutarCambioEstado(nuevoEstado);
+                    }
+                });
+            } else {
+                ejecutarCambioEstado(nuevoEstado);
+            }
+        }
+    });
+}
+
+function ejecutarCambioEstado(nuevoEstado) {
+    fetch('{% url "solicitudes:cambiar_estado" solicitud.id %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `estado=${nuevoEstado}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire('¡Éxito!', data.message, 'success').then(() => {
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', data.message, 'error');
+        }
+    })
+    .catch(error => {
+        Swal.fire('Error', 'Hubo un problema al cambiar el estado', 'error');
+    });
+}
+
+function marcarDespachado() {
+    Swal.fire({
+        title: '¿Marcar como Despachado?',
+        html: '<p>Se descontará el stock de bodega 013 para todos los productos que estén en bultos.</p><p><strong>Esta acción confirma la salida definitiva de la mercancía.</strong></p>',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, despachar',
+        confirmButtonColor: '#28a745',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            ejecutarCambioEstado('despachado');
+        }
+    });
+}
+
+function toggleAfectaStock() {
+    const afectaActual = {{ solicitud.afecta_stock|yesno:"true,false" }};
+    const nuevoValor = !afectaActual;
+    
+    Swal.fire({
+        title: nuevoValor ? '¿Activar afectación de stock?' : '¿Desactivar afectación de stock?',
+        text: nuevoValor ? 'La solicitud volverá a afectar stock normalmente' : 'La solicitud NO afectará stock (órdenes especiales, traslados, etc.)',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cambiar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch('{% url "solicitudes:cambiar_afecta_stock" solicitud.id %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `afecta_stock=${nuevoValor}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('¡Éxito!', data.message, 'success').then(() => {
+                        location.reload();
+                    });
+                } else {
+                    Swal.fire('Error', data.message, 'error');
+                }
+            });
+        }
+    });
+}
+</script>
+{% endif %}
+{% endblock %}

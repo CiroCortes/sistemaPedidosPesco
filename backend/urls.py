@@ -8,7 +8,9 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from core import views as core_views
+from core import views_bodegas, views_usuarios
 from ia import views as ia_views
+from diagnostico import views as diagnostico_views
 
 urlpatterns = [
     # Admin de Django
@@ -21,9 +23,28 @@ urlpatterns = [
     path('perfil/', core_views.perfil_usuario, name='perfil'),
     path('ia/chat/', ia_views.ia_chat, name='ia_chat'),
     
+    # Gestión de Bodegas (Admin)
+    path('bodegas/', views_bodegas.lista_bodegas, name='lista_bodegas'),
+    path('bodegas/nueva/', views_bodegas.crear_bodega, name='crear_bodega'),
+    path('bodegas/<int:pk>/editar/', views_bodegas.editar_bodega, name='editar_bodega'),
+    path('bodegas/<int:pk>/toggle/', views_bodegas.toggle_estado_bodega, name='toggle_estado_bodega'),
+    path('bodegas/usuarios/', views_bodegas.lista_usuarios_bodegas, name='lista_usuarios_bodegas'),
+    path('bodegas/usuarios/<int:user_id>/asignar/', views_bodegas.asignar_bodegas, name='asignar_bodegas'),
+    
+    # Gestión de usuarios (Admin)
+    path('usuarios/', views_usuarios.lista_usuarios, name='lista_usuarios'),
+    path('usuarios/nuevo/', views_usuarios.crear_usuario, name='crear_usuario'),
+    path('usuarios/<int:pk>/editar/', views_usuarios.editar_usuario, name='editar_usuario'),
+    
+    # Diagnóstico (Solo para admin/desarrollo)
+    path('diagnostico/', diagnostico_views.pagina_diagnostico, name='diagnostico'),
+    
     # Apps del sistema (se crearán sus urls.py)
     path('solicitudes/', include('solicitudes.urls')),
     path('bodega/', include('bodega.urls')),
+    path('inventario/', include('inventario.urls')),  # URLs de inventario
+    path('despacho/', include('despacho.urls')),
+    path('configuracion/', include('configuracion.urls')),
     # path('despacho/', include('despacho.urls')),
     # path('guias/', include('guias.urls')),
     # path('reportes/', include('reportes.urls')),

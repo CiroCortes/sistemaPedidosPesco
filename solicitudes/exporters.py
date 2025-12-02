@@ -204,3 +204,5 @@ def exportar_kpis_excel(fecha_inicio, fecha_fin):
     wb.save(response)
     return response
 
+
+

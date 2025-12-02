@@ -1,0 +1,383 @@
+{% extends 'base.html' %}
+
+{% block extra_css %}
+<style>
+.modal-wide .modal-dialog {
+    max-width: 70vw;
+}
+</style>
+{% endblock %}
+
+{% block title %}Gestión de pedidos{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h2 mb-0">Gestión de pedidos</h1>
+        <p class="text-muted mb-0">Revisa y entrega las solicitudes asignadas a tu bodega.</p>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label">Buscar</label>
+                <input type="text" name="q" class="form-control" value="{{ busqueda }}"
+                    placeholder="Cliente, N° pedido o código">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Bodega</label>
+                <select name="bodega" class="form-select">
+                    <option value="">Todas</option>
+                    {% for bodega in bodegas_disponibles %}
+                    <option value="{{ bodega.codigo }}" {% if bodega_filtro == bodega.codigo %}selected{% endif %}>
+                        {{ bodega.codigo }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-outline-primary me-2">
+                    <i class="bi bi-funnel me-1"></i> Filtrar
+                </button>
+                <a href="{% url 'bodega:gestion_pedidos' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i> Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>ID</th>
+                <th>Fecha / Hora</th>
+                <th>Tipo</th>
+                <th>Pedido / ST</th>
+                <th>Cliente</th>
+                <th>Productos</th>
+                <th>Bodegas</th>
+                <th class="text-end">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for solicitud in solicitudes %}
+            <tr>
+                <td class="fw-semibold">#{{ solicitud.id }}</td>
+                <td>
+                    <div>{{ solicitud.fecha_solicitud|date:"d/m/Y" }}</div>
+                    <small class="text-muted">{{ solicitud.hora_solicitud|time:"H:i" }}</small>
+                </td>
+                <td>
+                    <span class="badge bg-secondary">{{ solicitud.tipo }}</span>
+                    {% if solicitud.urgente %}
+                    <span class="badge bg-danger ms-1">Urgente</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div>Pedido: {{ solicitud.numero_pedido|default:"-" }}</div>
+                    <small class="text-muted">ST: {{ solicitud.numero_st|default:"-" }}</small>
+                    <small class="text-muted d-block">OT: {{ solicitud.numero_ot|default:"-" }}</small>
+                </td>
+                <td>
+                    <div class="fw-semibold">{{ solicitud.cliente }}</div>
+                    <small class="text-muted">{{ solicitud.observacion|default:"Sin observaciones" }}</small>
+                </td>
+                <td>
+                    <div class="fw-semibold">{{ solicitud.total_lineas }} líneas</div>
+                    <small class="text-muted">{{ solicitud.total_cantidad }} unidades</small>
+                </td>
+                <td>
+                    {% for bodega in solicitud.bodegas_involucradas %}
+                    <span class="badge bg-info text-dark mb-1">{{ bodega }}</span>
+                    {% endfor %}
+                </td>
+                <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-primary btn-registrar"
+                        data-solicitud="{{ solicitud.id }}"
+                        data-tipo="{{ solicitud.tipo }}"
+                        data-cliente="{{ solicitud.cliente }}"
+                        data-fecha="{{ solicitud.fecha_solicitud|date:'d/m/Y' }}"
+                        data-hora="{{ solicitud.hora_solicitud|time:'H:i' }}"
+                        data-pedido="{{ solicitud.numero_pedido|default:'-' }}"
+                        data-st="{{ solicitud.numero_st|default:'-' }}"
+                        data-ot="{{ solicitud.numero_ot|default:'-' }}"
+                        data-detalles-id="sol-detalles-{{ solicitud.id }}">
+                        <i class="bi bi-truck me-1"></i> Confirmar entrega
+                    </button>
+                    <script type="application/json" id="sol-detalles-{{ solicitud.id }}">
+                        {{ solicitud.modal_detalles_json|safe }}
+                    </script>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-5">
+                    No hay solicitudes pendientes para tus bodegas.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal de transferencia -->
+<div class="modal fade modal-wide" id="modalTransferencia" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Registrar entrega</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <strong>Solicitud:</strong> <span id="transferSolicitud"></span><br>
+                    <strong>Cliente:</strong> <span id="transferCliente"></span><br>
+                    <strong>Pedido:</strong> <span id="transferPedido"></span><br>
+                    <strong>OT:</strong> <span id="transferOt"></span><br>
+                    <strong>Fecha:</strong> <span id="transferFecha"></span>
+                </div>
+                <div class="mb-3">
+                    <h6 class="border-bottom pb-2">Productos asignados</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm" id="tablaTransferDetalles">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <input type="checkbox" id="selectAllDetalles">
+                                    </th>
+                                    <th>Código</th>
+                                    <th>Descripción</th>
+                                    <th>Bodega</th>
+                                    <th>Cantidad</th>
+                                    <th>Ubicaciones</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div id="infoUbicaciones" class="alert alert-info d-none mt-2"></div>
+                </div>
+                <div id="transferErrors" class="alert alert-danger d-none"></div>
+                <form id="formTransferencia" method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">N° transferencia SAP</label>
+                        <input type="text" name="numero_transferencia" class="form-control" required maxlength="50">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha</label>
+                            <input type="date" name="fecha_transferencia" class="form-control" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Hora</label>
+                            <input type="time" name="hora_transferencia" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bodega destino</label>
+                        <input type="text" name="bodega_destino" class="form-control" value="013" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observaciones</label>
+                        <textarea name="observaciones" class="form-control" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="btnCancelarTransferencia">Cancelar</button>
+                <button type="submit" class="btn btn-primary" form="formTransferencia" id="btnSubmitTransferencia">
+                    <span class="spinner-border spinner-border-sm me-2 d-none" id="spinnerTransferencia" role="status"></span>
+                    <span id="btnSubmitText"><i class="bi bi-truck me-1"></i> Confirmar entrega</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const modalEl = document.getElementById('modalTransferencia');
+    const transferenciaModal = new bootstrap.Modal(modalEl);
+    const formTransfer = document.getElementById('formTransferencia');
+    const errorsBox = document.getElementById('transferErrors');
+    const detallesTableBody = document.querySelector('#tablaTransferDetalles tbody');
+    const bulkEndpoint = "{% url 'bodega:registrar_transferencia_multiple' %}";
+    const infoUbicaciones = document.getElementById('infoUbicaciones');
+    let currentDetalles = [];
+
+    function setCurrentDateTime() {
+        const now = new Date();
+        const dateField = formTransfer.querySelector('[name="fecha_transferencia"]');
+        const timeField = formTransfer.querySelector('[name="hora_transferencia"]');
+        dateField.value = now.toISOString().slice(0, 10);
+        timeField.value = now.toTimeString().slice(0, 5);
+    }
+
+    document.querySelectorAll('.btn-registrar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.getElementById('transferSolicitud').textContent = `#${btn.dataset.solicitud} (${btn.dataset.tipo})`;
+            document.getElementById('transferCliente').textContent = btn.dataset.cliente;
+            document.getElementById('transferPedido').textContent = `Pedido: ${btn.dataset.pedido} · ST: ${btn.dataset.st}`;
+            document.getElementById('transferOt').textContent = btn.dataset.ot || '-';
+            document.getElementById('transferFecha').textContent = `${btn.dataset.fecha} ${btn.dataset.hora}`;
+
+            formTransfer.reset();
+            setCurrentDateTime();
+            formTransfer.querySelector('[name="bodega_destino"]').value = '013';
+            errorsBox.classList.add('d-none');
+            errorsBox.innerHTML = '';
+            infoUbicaciones.classList.add('d-none');
+            infoUbicaciones.innerHTML = '';
+
+            const detallesId = btn.dataset.detallesId;
+            const detallesScript = document.getElementById(detallesId);
+            if (!detallesScript) {
+                console.error('No se encontraron los detalles de la solicitud.');
+                return;
+            }
+            const detalles = JSON.parse(detallesScript.textContent);
+            detallesTableBody.innerHTML = '';
+            detalles.forEach((detalle, index) => {
+                const row = document.createElement('tr');
+                const selectBodega = (detalle.stock && detalle.stock.length)
+                    ? `<select class="form-select form-select-sm selector-bodega" data-detalle="${detalle.id}">
+                        ${detalle.stock.map(item => {
+                            const selected = item.bodega === (detalle.bodega_sugerida || item.bodega) ? 'selected' : '';
+                            return `<option value="${item.bodega}" ${selected}>
+                                ${item.bodega} · ${item.ubicacion || '-'} (${item.stock})
+                            </option>`;
+                        }).join('')}
+                    </select>`
+                    : `<input type="text" class="form-control form-control-sm" value="${detalle.bodega || 'N/D'}" readonly>`;
+
+                row.innerHTML = `
+                    <td>
+                        <input type="checkbox" name="detalle_option" value="${detalle.id}" data-url="${detalle.url}" checked>
+                    </td>
+                    <td><code>${detalle.codigo}</code></td>
+                    <td>${detalle.descripcion}</td>
+                    <td>${selectBodega}</td>
+                    <td>${detalle.cantidad}</td>
+                    <td>
+                        ${detalle.stock && detalle.stock.length
+                            ? `<button type="button" class="btn btn-link btn-sm p-0 btn-ver-stock" data-stock='${JSON.stringify(detalle.stock)}'>Ver bodegas</button>`
+                            : '<span class="text-muted small">Sin datos</span>'}
+                    </td>
+                `;
+                detallesTableBody.appendChild(row);
+            });
+
+            currentDetalles = detalles;
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = true;
+            }
+
+            transferenciaModal.show();
+        });
+    });
+
+    detallesTableBody.addEventListener('click', (event) => {
+        if (event.target.classList.contains('btn-ver-stock')) {
+            const datos = event.target.dataset.stock ? JSON.parse(event.target.dataset.stock) : [];
+            if (!datos.length) {
+                infoUbicaciones.innerHTML = 'No hay información de bodegas para este código.';
+                infoUbicaciones.classList.remove('d-none', 'alert-danger');
+                infoUbicaciones.classList.add('alert-info');
+                return;
+            }
+
+            let html = '<strong>Bodegas disponibles:</strong><ul class="mb-0">';
+            datos.forEach(item => {
+                html += `<li><strong>${item.bodega}</strong> (${item.bodega_nombre || 'Sin nombre'}) - Ubicación: ${item.ubicacion || '-'} ${item.ubicacion_2 || ''} · Stock: ${item.stock}</li>`;
+            });
+            html += '</ul>';
+            infoUbicaciones.innerHTML = html;
+            infoUbicaciones.classList.remove('d-none', 'alert-danger');
+            infoUbicaciones.classList.add('alert-info');
+        }
+    });
+
+    const selectAllCheckbox = document.getElementById('selectAllDetalles');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', () => {
+            detallesTableBody.querySelectorAll('input[name="detalle_option"]').forEach(cb => {
+                cb.checked = selectAllCheckbox.checked;
+            });
+        });
+    }
+
+    function setLoading(state) {
+        const spinner = document.getElementById('spinnerTransferencia');
+        const btnText = document.getElementById('btnSubmitText');
+        const submitBtn = document.getElementById('btnSubmitTransferencia');
+        const cancelBtn = document.getElementById('btnCancelarTransferencia');
+        if (state) {
+            spinner.classList.remove('d-none');
+            btnText.classList.add('visually-hidden');
+            submitBtn.disabled = true;
+            cancelBtn.disabled = true;
+        } else {
+            spinner.classList.add('d-none');
+            btnText.classList.remove('visually-hidden');
+            submitBtn.disabled = false;
+            cancelBtn.disabled = false;
+        }
+    }
+
+    formTransfer.addEventListener('submit', function (event) {
+        event.preventDefault();
+        const selectedDetalles = Array.from(detallesTableBody.querySelectorAll('input[name="detalle_option"]:checked'));
+        if (!selectedDetalles.length) {
+            errorsBox.innerHTML = 'Debes seleccionar al menos un producto para entregar.';
+            errorsBox.classList.remove('d-none');
+            return;
+        }
+
+        const baseFormData = new FormData(formTransfer);
+        selectedDetalles.forEach(cb => {
+            baseFormData.append('detalle_ids[]', cb.value);
+            const selector = detallesTableBody.querySelector(`.selector-bodega[data-detalle="${cb.value}"]`);
+            if (selector) {
+                baseFormData.append(`bodegas_origen[${cb.value}]`, selector.value);
+            }
+        });
+
+        errorsBox.classList.add('d-none');
+        errorsBox.innerHTML = '';
+        setLoading(true);
+
+        fetch(bulkEndpoint, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: baseFormData
+        })
+            .then(async response => {
+                const data = await response.json();
+                if (data.success) {
+                    transferenciaModal.hide();
+                    window.location.reload();
+                } else {
+                    const messages = data.errors
+                        ? Object.values(data.errors).flat().join('<br>')
+                        : (data.message || 'Error al registrar la transferencia');
+                    errorsBox.innerHTML = messages;
+                    errorsBox.classList.remove('d-none');
+                }
+            })
+            .catch(() => {
+                errorsBox.innerHTML = 'Error inesperado. Intenta nuevamente.';
+                errorsBox.classList.remove('d-none');
+            })
+            .finally(() => setLoading(false));
+    });
+</script>
+{% endblock %}
+

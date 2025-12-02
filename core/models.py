@@ -3,6 +3,49 @@ from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 
 
+class Bodega(models.Model):
+    """
+    Modelo de Bodega para el sistema.
+    Representa las bodegas físicas donde se almacenan productos.
+    """
+    
+    codigo = models.CharField(
+        max_length=50,
+        unique=True,
+        verbose_name='Código de bodega',
+        help_text='Ej: 013-01, 013-PP, etc.'
+    )
+    nombre = models.CharField(
+        max_length=200,
+        verbose_name='Nombre de la bodega'
+    )
+    descripcion = models.TextField(
+        blank=True,
+        verbose_name='Descripción'
+    )
+    activa = models.BooleanField(
+        default=True,
+        verbose_name='¿Activa?'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Creada el'
+    )
+    
+    class Meta:
+        db_table = 'bodegas'
+        verbose_name = 'Bodega'
+        verbose_name_plural = 'Bodegas'
+        ordering = ['codigo']
+        indexes = [
+            models.Index(fields=['codigo']),
+            models.Index(fields=['activa']),
+        ]
+    
+    def __str__(self):
+        return f"{self.codigo} - {self.nombre}"
+
+
 class Usuario(AbstractUser):
     """
     Modelo de Usuario personalizado para Sistema PESCO
@@ -38,6 +81,15 @@ class Usuario(AbstractUser):
         blank=True, 
         null=True,
         verbose_name='Teléfono'
+    )
+    
+    # Bodegas asignadas (múltiples bodegas por usuario)
+    bodegas_asignadas = models.ManyToManyField(
+        Bodega,
+        blank=True,
+        related_name='usuarios',
+        verbose_name='Bodegas asignadas',
+        help_text='Bodegas que este usuario puede gestionar'
     )
     
     # Timestamps
@@ -95,3 +147,18 @@ class Usuario(AbstractUser):
     def nombre_corto(self):
         """Retorna el primer nombre"""
         return self.nombre_completo.split()[0] if self.nombre_completo else self.username
+    
+    def puede_gestionar_bodega(self, codigo_bodega):
+        """
+        Verifica si el usuario puede gestionar una bodega específica.
+        Admin puede gestionar todas.
+        """
+        if self.es_admin():
+            return True
+        return self.bodegas_asignadas.filter(codigo=codigo_bodega, activa=True).exists()
+    
+    def get_bodegas_codigos(self):
+        """Retorna lista de códigos de bodegas asignadas"""
+        if self.es_admin():
+            return list(Bodega.objects.filter(activa=True).values_list('codigo', flat=True))
+        return list(self.bodegas_asignadas.filter(activa=True).values_list('codigo', flat=True))

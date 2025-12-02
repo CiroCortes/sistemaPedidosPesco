@@ -10,7 +10,7 @@
             Asistente IA
         </h1>
         <p class="text-muted mb-0">
-            Pega el contenido del correo o adjunta un pantallazo de SAP y la IA creará la solicitud.
+            Pega el contenido del correo, adjunta un pantallazo de SAP o un archivo Excel con códigos masivos (75+).
         </p>
     </div>
 </div>
@@ -24,13 +24,8 @@
                 <label for="mensaje" class="form-label">
                     Texto del correo / instrucciones
                 </label>
-                <textarea
-                    id="mensaje"
-                    name="mensaje"
-                    rows="5"
-                    class="form-control"
-                    placeholder="Ejemplo: 'Ciro, por favor prepara pedido PC 25111045 para cliente XX con los códigos siguientes...'"
-                >{{ request.POST.mensaje }}</textarea>
+                <textarea id="mensaje" name="mensaje" rows="5" class="form-control"
+                    placeholder="Ejemplo: 'Procesa esta solicitud de PC 2510545 para SUCURSAL CALAMA, te adjunto el archivo con los códigos'">{{ request.POST.mensaje }}</textarea>
                 <small class="text-muted">
                     Puedes pegar aquí el contenido del correo o un resumen.
                 </small>
@@ -40,15 +35,30 @@
                 <label for="imagen" class="form-label">
                     Pantallazo SAP (opcional)
                 </label>
-                <input
-                    type="file"
-                    id="imagen"
-                    name="imagen"
-                    class="form-control"
-                    accept="image/*"
-                >
+                <input type="file" id="imagen" name="imagen" class="form-control" accept="image/*">
                 <small class="text-muted">
                     Si adjuntas una imagen, la IA intentará leer códigos y cantidades desde el pantallazo.
+                </small>
+            </div>
+
+            <div class="mb-3">
+                <label for="excel" class="form-label">
+                    📊 Archivo Excel con códigos (opcional)
+                </label>
+                <input type="file" id="excel" name="excel" class="form-control" accept=".xlsx,.xls">
+                <small class="text-muted">
+                    <strong>NUEVO:</strong> Para pedidos con muchos códigos (75+), adjunta un Excel simple con columnas:
+                    <code>Código | Cantidad</code>.
+                    La IA extraerá la metadata del texto (tipo, número, cliente) y los productos del Excel.
+                    <ul>
+                        <li><strong>Código</strong> (opcional si hay descripción)</li>
+                        <li><strong>Descripción</strong> (opcional si hay código)</li>
+                        <li><strong>Cantidad</strong> (obligatorio)</li>
+                        <li><strong>Bodega</strong> (opcional, ej: 013-01)</li>
+                    </ul>
+                    <p class="mb-0">
+                        Si no indicas bodega, el sistema intentará asignarla automáticamente según el stock disponible.
+                    </p>
                 </small>
             </div>
 
@@ -73,6 +83,48 @@
 </div>
 {% endif %}
 
+<!-- Loading Spinner -->
+<div id="loadingSpinner" class="modal fade" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-transparent border-0">
+            <div class="modal-body text-center">
+                <div class="spinner-border text-light" role="status" style="width: 4rem; height: 4rem;">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                <p class="text-light mt-3 fs-5" id="loadingMessage">Procesando...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.querySelector('form');
+        const loadingSpinner = new bootstrap.Modal(document.getElementById('loadingSpinner'));
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        if (form) {
+            form.addEventListener('submit', function (e) {
+                const texto = document.getElementById('mensaje').value.trim();
+                const imagen = document.getElementById('imagen').files.length > 0;
+                const excel = document.getElementById('excel').files.length > 0;
+
+                if (texto || imagen || excel) {
+                    // Determinar mensaje según lo que se está procesando
+                    if (excel) {
+                        loadingMessage.textContent = '📊 Procesando archivo Excel...';
+                    } else if (imagen) {
+                        loadingMessage.textContent = '🖼️ Analizando imagen con IA...';
+                    } else {
+                        loadingMessage.textContent = '🤖 Procesando con IA...';
+                    }
+
+                    // Mostrar spinner
+                    loadingSpinner.show();
+                }
+            });
+        }
+    });
+</script>
+
 {% endblock %}
-
-

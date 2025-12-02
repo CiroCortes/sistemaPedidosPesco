@@ -1,13 +1,31 @@
 {% extends 'base.html' %}
 
-{% block title %}Nueva Solicitud - Sistema PESCO{% endblock %}
+{% block title %}{% if es_edicion %}Editar{% else %}Nueva{% endif %} Solicitud - Sistema PESCO{% endblock %}
+
+{% block extra_css %}
+<style>
+.stock-info-row {
+    background-color: #f8f9fa;
+}
+.stock-info-row td {
+    padding: 0.25rem 0.5rem !important;
+}
+.alert-sm {
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+input[readonly] {
+    background-color: #e9ecef !important;
+}
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
     <div>
         <h1 class="h2">
-            <i class="bi bi-file-earmark-plus me-2"></i>
-            Nueva Solicitud
+            <i class="bi bi-{% if es_edicion %}pencil{% else %}file-earmark-plus{% endif %} me-2"></i>
+            {% if es_edicion %}Editar Solicitud #{{ solicitud.id }}{% else %}Nueva Solicitud{% endif %}
         </h1>
         <p class="text-muted mb-0">Formulario de ingreso manual para el equipo administrativo.</p>
     </div>
@@ -37,7 +55,25 @@
                         <div class="text-danger small mt-1">{{ form.numero_pedido.errors|striptags }}</div>
                     {% endif %}
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.numero_ot.label }}</label>
+                    {{ form.numero_ot }}
+                    <small class="text-muted">Orden de transporte (OT) si aplica.</small>
+                    {% if form.numero_ot.errors %}
+                        <div class="text-danger small mt-1">{{ form.numero_ot.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+                {% if es_edicion %}
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.numero_guia_despacho.label }}</label>
+                    {{ form.numero_guia_despacho }}
+                    <small class="text-muted">Guía o factura del despacho.</small>
+                    {% if form.numero_guia_despacho.errors %}
+                        <div class="text-danger small mt-1">{{ form.numero_guia_despacho.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                <div class="col-md-12">
                     <label class="form-label">{{ form.cliente.label }}</label>
                     {{ form.cliente }}
                     {% if form.cliente.errors %}
@@ -45,28 +81,35 @@
                     {% endif %}
                 </div>
 
-                <div class="col-md-6">
-                    <label class="form-label">{{ form.bodega.label }}</label>
-                    {{ form.bodega }}
-                    {% if form.bodega.errors %}
-                        <div class="text-danger small mt-1">{{ form.bodega.errors|striptags }}</div>
-                    {% endif %}
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label">{{ form.transporte.label }}</label>
-                    {{ form.transporte }}
+                <div class="{% if es_edicion %}col-md-6{% else %}col-md-12{% endif %}">
+                    <label class="form-label">Transporte</label>
+                    <select name="{{ form.transporte.name }}" class="form-select" id="id_{{ form.transporte.name }}">
+                        {% for value, label in form.transporte.field.choices %}
+                        <option value="{{ value }}" {% if form.transporte.value == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
                     {% if form.transporte.errors %}
                         <div class="text-danger small mt-1">{{ form.transporte.errors|striptags }}</div>
                     {% endif %}
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">{{ form.estado.label }}</label>
-                    {{ form.estado }}
+                {% if es_edicion %}
+                <div class="col-md-6">
+                    <label class="form-label">Estado</label>
+                    <select name="{{ form.estado.name }}" class="form-select" id="id_{{ form.estado.name }}">
+                        {% for value, label in form.estado.field.choices %}
+                        <option value="{{ value }}" {% if form.estado.value == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
                     {% if form.estado.errors %}
                         <div class="text-danger small mt-1">{{ form.estado.errors|striptags }}</div>
                     {% endif %}
                 </div>
+                {% endif %}
+                <div class="col-md-6">
                 <div class="col-md-3 d-flex align-items-center mt-4">
                     <div class="form-check form-switch">
                         {{ form.urgente }}
@@ -74,6 +117,17 @@
                     </div>
                     {% if form.urgente.errors %}
                         <div class="text-danger small ms-3">{{ form.urgente.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+                
+                <div class="col-md-3 d-flex align-items-center mt-4">
+                    <div class="form-check form-switch">
+                        {{ form.afecta_stock }}
+                        <label class="form-check-label ms-2">{{ form.afecta_stock.label }}</label>
+                    </div>
+                    <small class="text-muted d-block ms-3">Desmarcar para órdenes especiales</small>
+                    {% if form.afecta_stock.errors %}
+                        <div class="text-danger small ms-3">{{ form.afecta_stock.errors|striptags }}</div>
                     {% endif %}
                 </div>
 
@@ -91,16 +145,19 @@
             <hr class="my-4">
             <h5>Productos adicionales</h5>
             <p class="text-muted">
-                Usa estas líneas si la solicitud incluye más de un código de producto.
+                <i class="bi bi-info-circle me-1"></i> 
+                Ingresa cada código y selecciona de qué <strong>bodega</strong> se preparará. 
+                Múltiples usuarios de bodega verán esta solicitud y entregarán los materiales desde su bodega asignada.
             </p>
 
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead>
                         <tr>
-                            <th>Código</th>
+                            <th style="width: 150px;">Código</th>
                             <th>Descripción</th>
-                            <th style="width: 120px;">Cantidad</th>
+                            <th style="width: 200px;">Bodega</th>
+                            <th style="width: 100px;">Cantidad</th>
                             <th style="width: 80px;"></th>
                         </tr>
                     </thead>
@@ -110,6 +167,7 @@
                         <tr>
                             <td>
                                 {{ f.codigo }}
+                                {{ f.id }}
                                 {% if f.codigo.errors %}
                                     <div class="text-danger small">{{ f.codigo.errors|striptags }}</div>
                                 {% endif %}
@@ -118,6 +176,12 @@
                                 {{ f.descripcion }}
                                 {% if f.descripcion.errors %}
                                     <div class="text-danger small">{{ f.descripcion.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ f.bodega }}
+                                {% if f.bodega.errors %}
+                                    <div class="text-danger small">{{ f.bodega.errors|striptags }}</div>
                                 {% endif %}
                             </td>
                             <td>
@@ -139,8 +203,9 @@
                     </tbody>
                     <tbody id="empty-form-template" class="d-none">
                         <tr>
-                            <td>{{ formset.empty_form.codigo }}</td>
+                            <td>{{ formset.empty_form.codigo }} {{ formset.empty_form.id }}</td>
                             <td>{{ formset.empty_form.descripcion }}</td>
+                            <td>{{ formset.empty_form.bodega }}</td>
                             <td>{{ formset.empty_form.cantidad }}</td>
                             <td class="text-center">
                                 {% if formset.empty_form.DELETE %}
@@ -159,7 +224,7 @@
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btnAgregarLinea">
                     <i class="bi bi-plus-circle me-1"></i>Agregar línea
                 </button>
-                <small class="text-muted ms-2">Comienza con 5 líneas; puedes agregar hasta 45 productos.</small>
+                <small class="text-muted ms-2">Agrega líneas según necesites (máximo 45).</small>
             </div>
 
             <div class="mt-4 d-flex justify-content-end">
@@ -182,9 +247,133 @@ document.addEventListener('DOMContentLoaded', function() {
     const template = document.querySelector('#empty-form-template tr');
     const totalFormsInput = document.getElementById('id_detalles-TOTAL_FORMS');
     const maxForms = 45;
+    const csrfToken = '{{ csrf_token }}';
 
     if (!btnAgregar || !tbody || !template || !totalFormsInput) return;
 
+    // Función para buscar código en stock
+    function buscarCodigoEnStock(codigoInput) {
+        const codigo = codigoInput.value.trim().toUpperCase();
+        if (!codigo || codigo.length < 3) return;
+
+        const row = codigoInput.closest('tr');
+        const descripcionInput = row.querySelector('[name*="descripcion"]');
+        const bodegaSelect = row.querySelector('[name*="bodega"]');
+        
+        console.log('🔍 Buscando código:', codigo);
+
+        fetch('/solicitudes/api/buscar-codigo/?codigo=' + encodeURIComponent(codigo))
+            .then(response => response.json())
+            .then(data => {
+                console.log('📦 Respuesta:', data);
+                
+                if (data.success) {
+                    // Autocompletar descripción
+                    if (descripcionInput) {
+                        descripcionInput.value = data.descripcion || '';
+                        descripcionInput.readOnly = true;
+                        descripcionInput.style.backgroundColor = '#e9ecef';
+                    }
+                    
+                    // Mostrar información de stock
+                    let stockInfo = '';
+                    if (data.bodegas && data.bodegas.length > 0) {
+                        stockInfo = '<div class="alert alert-success alert-sm mt-1 mb-0 py-1 px-2 small">';
+                        stockInfo += '<strong>Stock disponible:</strong><br>';
+                        data.bodegas.forEach(b => {
+                            stockInfo += `📦 <strong>${b.codigo_bodega}</strong> (${b.nombre_bodega}): ${b.stock_disponible} unidades<br>`;
+                        });
+                        stockInfo += '</div>';
+                        
+                        // Actualizar opciones de bodega
+                        if (bodegaSelect) {
+                            // Guardar la opción vacía si existe
+                            const emptyOption = bodegaSelect.querySelector('option[value=""]');
+                            
+                            // Limpiar opciones actuales excepto la vacía
+                            bodegaSelect.innerHTML = '';
+                            if (emptyOption) {
+                                bodegaSelect.appendChild(emptyOption.cloneNode(true));
+                            }
+                            
+                            // Agregar solo las bodegas que tienen stock de este código
+                            data.bodegas.forEach(b => {
+                                const option = new Option(
+                                    `${b.codigo_bodega} · ${b.nombre_bodega} (Stock: ${b.stock_disponible})`, 
+                                    b.codigo_bodega
+                                );
+                                bodegaSelect.add(option);
+                            });
+                            
+                            // Seleccionar automáticamente la primera bodega con stock
+                            if (data.bodegas.length === 1) {
+                                bodegaSelect.value = data.bodegas[0].codigo_bodega;
+                            } else if (data.bodegas.length > 1) {
+                                // Resaltar el select para que el usuario elija
+                                bodegaSelect.style.borderColor = '#0d6efd';
+                                bodegaSelect.style.borderWidth = '2px';
+                            }
+                        }
+                    } else {
+                        stockInfo = '<div class="alert alert-warning alert-sm mt-1 mb-0 py-1 px-2 small">';
+                        stockInfo += '⚠️ <strong>Sin stock disponible</strong> en ninguna bodega. Puedes seleccionar una bodega manualmente si deseas continuar.';
+                        stockInfo += '</div>';
+                    }
+                    
+                    // Insertar información después de la fila
+                    let infoRow = row.nextElementSibling;
+                    if (infoRow && infoRow.classList.contains('stock-info-row')) {
+                        infoRow.remove();
+                    }
+                    
+                    const newInfoRow = document.createElement('tr');
+                    newInfoRow.classList.add('stock-info-row');
+                    newInfoRow.innerHTML = `<td colspan="4">${stockInfo}</td>`;
+                    row.after(newInfoRow);
+                    
+                } else {
+                    // Código no encontrado
+                    if (descripcionInput) {
+                        descripcionInput.value = '';
+                        descripcionInput.readOnly = false;
+                        descripcionInput.style.backgroundColor = '';
+                    }
+                    
+                    let infoRow = row.nextElementSibling;
+                    if (infoRow && infoRow.classList.contains('stock-info-row')) {
+                        infoRow.remove();
+                    }
+                    
+                    const newInfoRow = document.createElement('tr');
+                    newInfoRow.classList.add('stock-info-row');
+                    newInfoRow.innerHTML = `<td colspan="4"><div class="alert alert-danger alert-sm mt-1 mb-0 py-1 px-2 small">❌ ${data.message}</div></td>`;
+                    row.after(newInfoRow);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    }
+
+    // Agregar evento a los inputs de código existentes
+    tbody.querySelectorAll('[name*="codigo"]').forEach(input => {
+        input.addEventListener('blur', function() {
+            buscarCodigoEnStock(this);
+        });
+        input.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    });
+    
+    // Agregar evento a los selects de bodega existentes
+    tbody.querySelectorAll('[name*="bodega"]').forEach(select => {
+        select.addEventListener('change', function() {
+            this.style.borderColor = '';
+            this.style.borderWidth = '';
+        });
+    });
+
+    // Agregar nueva línea
     btnAgregar.addEventListener('click', function() {
         let total = parseInt(totalFormsInput.value || '0', 10);
         if (total >= maxForms) {
@@ -195,8 +384,35 @@ document.addEventListener('DOMContentLoaded', function() {
         const newRow = template.cloneNode(true);
         let html = newRow.innerHTML.replace(/__prefix__/g, total);
         newRow.innerHTML = html;
+        
+        // Agregar eventos a los nuevos inputs
+        const codigoInput = newRow.querySelector('[name*="codigo"]');
+        const bodegaSelect = newRow.querySelector('[name*="bodega"]');
+        
+        if (codigoInput) {
+            codigoInput.addEventListener('blur', function() {
+                buscarCodigoEnStock(this);
+            });
+            codigoInput.addEventListener('input', function() {
+                this.value = this.value.toUpperCase();
+            });
+        }
+        
+        // Resetear estilo del select de bodega al cambiar
+        if (bodegaSelect) {
+            bodegaSelect.addEventListener('change', function() {
+                this.style.borderColor = '';
+                this.style.borderWidth = '';
+            });
+        }
+        
         tbody.appendChild(newRow);
         totalFormsInput.value = total + 1;
+        
+        // Enfocar el nuevo input de código
+        if (codigoInput) {
+            codigoInput.focus();
+        }
     });
 });
 </script>

@@ -55,15 +55,19 @@ def call_gemini_for_solicitud(
         '  "tipo": "PC|OF|EM|RM|ST",\n'
         '  "numero_pedido": "string o vacío",\n'
         '  "cliente": "string",\n'
-        '  "bodega": "string o vacío",\n'
+        '  "bodega": "",\n'
         '  "transporte": "Camión PESCO|Varmontt|Starken|Kaizen|Retira cliente|Otro",\n'
-        '  "estado": "pendiente|en_despacho|embalado|despachado|cancelado",\n'
+        '  "estado": "pendiente",\n'
         '  "urgente": true/false,\n'
         '  "observacion": "string",\n'
         '  "productos": [\n'
-        '     {"codigo": "SC o código", "descripcion": "string", "cantidad": numero_entero_positivo}\n'
+        '     {"codigo": "SC o código", "descripcion": "string (opcional)", "cantidad": numero_entero_positivo}\n'
         "  ]\n"
         "}\n\n"
+        "REGLAS IMPORTANTES:\n"
+        "- El campo \"bodega\" en la cabecera debe estar SIEMPRE VACÍO (\"\"). El sistema asignará automáticamente.\n"
+        "- En \"productos\", NO incluyas el campo \"bodega\". El sistema lo asignará automáticamente según disponibilidad.\n"
+        "- La \"descripcion\" en productos es OPCIONAL. Si no la ves claramente, déjala vacía. El sistema la buscará en Stock.\n"
         "- En el campo \"observacion\" debes copiar cualquier instrucción adicional del correo, "
         "por ejemplo: textos como 'cargar costo a la Orden de Facturación N° ...', "
         "'entregar en dirección ...', notas especiales, etc.\n"
@@ -73,6 +77,7 @@ def call_gemini_for_solicitud(
         "- Para traslados ST: normalmente no viene un número de pedido; en ese caso deja \"numero_pedido\" vacío "
         "y el sistema generará un número ST automático. No inventes números de pedido para ST.\n"
         "- Nunca inventes productos ni cantidades; solo incluye los que veas explícitamente.\n"
+        "- El \"estado\" debe ser siempre \"pendiente\" para solicitudes nuevas.\n"
     )
 
     contents: list[Any] = [system_prompt, texto]

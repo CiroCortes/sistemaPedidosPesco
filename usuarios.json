@@ -1,0 +1,25 @@
+[
+{
+  "model": "core.usuario",
+  "pk": 1,
+  "fields": {
+    "password": "pbkdf2_sha256$1000000$nW9rbqAkQTLU2BvGhQbedA$r271vf9I3ieOD1D9xi8qJ1WBieCXJkN5tM2R1kDVSHE=",
+    "last_login": "2025-11-24T23:17:38.967Z",
+    "is_superuser": true,
+    "username": "admin",
+    "first_name": "",
+    "last_name": "",
+    "email": "ccortes@pesco.cl",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2025-11-23T19:51:05.946Z",
+    "rol": "admin",
+    "nombre_completo": "",
+    "telefono": null,
+    "fecha_creacion": "2025-11-23T19:51:05.946Z",
+    "ultima_modificacion": "2025-11-23T19:51:06.726Z",
+    "groups": [],
+    "user_permissions": []
+  }
+}
+]

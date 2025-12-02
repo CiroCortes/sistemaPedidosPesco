@@ -6,9 +6,11 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
+from django.utils.safestring import mark_safe
 
 from solicitudes.services import crear_solicitud_desde_payload, SolicitudServiceError
 from .gemini_client import call_gemini_for_solicitud
+from .excel_processor import procesar_excel_productos, ExcelProcessorError
 
 
 @login_required
@@ -18,7 +20,9 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
 
     Flujo:
       - Usuario pega texto del correo y/o adjunta imagen (screenshot SAP).
-      - Se llama a Gemini para extraer un payload estructurado.
+      - NUEVO: Usuario puede adjuntar Excel con códigos masivos.
+      - Se llama a Gemini para extraer metadata (tipo, cliente, etc.).
+      - Si hay Excel, se extraen los productos del Excel en lugar del texto.
       - Se crea la Solicitud usando crear_solicitud_desde_payload.
     """
     contexto: Dict[str, Any] = {}
@@ -26,15 +30,32 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         texto = request.POST.get("mensaje", "").strip()
         imagen_archivo = request.FILES.get("imagen")
+        excel_archivo = request.FILES.get("excel")  # NUEVO
 
-        if not texto and not imagen_archivo:
-            messages.error(request, "Debes ingresar texto o adjuntar una imagen.")
+        if not texto and not imagen_archivo and not excel_archivo:
+            messages.error(request, "Debes ingresar texto, adjuntar una imagen o un archivo Excel.")
             return redirect("ia_chat")
 
+        # Procesar Excel si existe
+        productos_excel = None
+        if excel_archivo:
+            try:
+                excel_bytes = excel_archivo.read()
+                productos_excel = procesar_excel_productos(excel_bytes)
+                messages.info(
+                    request,
+                    f"✅ Excel procesado: {len(productos_excel)} productos detectados."
+                )
+            except ExcelProcessorError as e:
+                messages.error(request, f"Error al procesar Excel: {e}")
+                return render(request, "ia/chat.html", contexto)
+
+        # Procesar imagen si existe
         image_bytes: Optional[bytes] = None
         if imagen_archivo:
             image_bytes = imagen_archivo.read()
 
+        # Llamar a Gemini para extraer metadata
         try:
             payload = call_gemini_for_solicitud(texto, image_bytes=image_bytes)
             contexto["payload"] = payload
@@ -45,8 +66,44 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
             )
             return render(request, "ia/chat.html", contexto)
 
+        # Si hay productos del Excel, reemplazar los del payload
+        if productos_excel:
+            payload["productos"] = productos_excel
+            messages.info(
+                request,
+                f"ℹ️ Usando {len(productos_excel)} productos del archivo Excel."
+            )
+
+        # Crear solicitud
         try:
             solicitud = crear_solicitud_desde_payload(payload, solicitante=request.user)
+            
+            # Información detallada de bodegas asignadas
+            detalles = solicitud.detalles.all()
+            bodegas_asignadas = {}
+            sin_bodega = 0
+            
+            for det in detalles:
+                if det.bodega:
+                    if det.bodega not in bodegas_asignadas:
+                        bodegas_asignadas[det.bodega] = 0
+                    bodegas_asignadas[det.bodega] += 1
+                else:
+                    sin_bodega += 1
+            
+            # Construir mensaje de éxito con detalle de bodegas
+            mensaje = f"✅ Solicitud #{solicitud.id} creada por IA con {solicitud.total_codigos()} productos."
+            
+            if bodegas_asignadas:
+                mensaje += "<br><strong>Bodegas asignadas automáticamente:</strong>"
+                for bodega, count in bodegas_asignadas.items():
+                    mensaje += f"<br>📦 Bodega {bodega}: {count} producto(s)"
+            
+            if sin_bodega > 0:
+                mensaje += f"<br>⚠️ {sin_bodega} producto(s) sin stock (orden especial)"
+            
+            messages.success(request, mark_safe(mensaje))
+            
         except SolicitudServiceError as e:
             messages.error(request, f"Error al crear la solicitud: {e}")
             return render(request, "ia/chat.html", contexto)
@@ -54,12 +111,7 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
             messages.error(request, f"Error interno al crear la solicitud: {e}")
             return render(request, "ia/chat.html", contexto)
 
-        messages.success(
-            request,
-            f"Solicitud #{solicitud.id} creada correctamente por IA.",
-        )
         return redirect("solicitudes:detalle", pk=solicitud.id)
 
     return render(request, "ia/chat.html", contexto)
-
 

@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}Registrar transferencia{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h3 mb-0">Registrar transferencia</h1>
+    <a href="{% url 'bodega:gestion_pedidos' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <strong>Datos de la solicitud</strong>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Solicitud</dt>
+                    <dd class="col-sm-8">#{{ detalle.solicitud.id }} · {{ detalle.solicitud.tipo }}</dd>
+
+                    <dt class="col-sm-4">Cliente</dt>
+                    <dd class="col-sm-8">{{ detalle.solicitud.cliente }}</dd>
+
+                    <dt class="col-sm-4">Producto</dt>
+                    <dd class="col-sm-8">
+                        <code>{{ detalle.codigo }}</code><br>
+                        <small class="text-muted">{{ detalle.descripcion|default:"-" }}</small>
+                    </dd>
+
+                    <dt class="col-sm-4">Bodega origen</dt>
+                    <dd class="col-sm-8">{{ detalle.bodega|default:"-" }}</dd>
+
+                    <dt class="col-sm-4">Cantidad</dt>
+                    <dd class="col-sm-8">{{ detalle.cantidad }}</dd>
+
+                    <dt class="col-sm-4">Estado</dt>
+                    <dd class="col-sm-8">
+                        <span class="badge bg-secondary">{{ detalle.estado_bodega }}</span>
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <strong>Datos de entrega</strong>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label class="form-label">N° transferencia SAP</label>
+                        {{ form.numero_transferencia }}
+                        {{ form.numero_transferencia.errors }}
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha</label>
+                            {{ form.fecha_transferencia }}
+                            {{ form.fecha_transferencia.errors }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Hora</label>
+                            {{ form.hora_transferencia }}
+                            {{ form.hora_transferencia.errors }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bodega destino</label>
+                        {{ form.bodega_destino }}
+                        {{ form.bodega_destino.errors }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observaciones</label>
+                        {{ form.observaciones }}
+                        {{ form.observaciones.errors }}
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{% url 'bodega:gestion_pedidos' %}" class="btn btn-outline-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-truck me-1"></i> Confirmar entrega
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ bulto.codigo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h3 mb-0">Bulto {{ bulto.codigo }}</h1>
+        <p class="text-muted mb-0">Estado actual:
+            <span class="badge bg-{{ bulto.color_estado }}">{{ bulto.get_estado_display }}</span>
+        </p>
+    </div>
+    <a href="{% url 'despacho:gestion' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light"><strong>Información del bulto</strong></div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Tipo</dt>
+                    <dd class="col-sm-8">{{ bulto.get_tipo_display }}</dd>
+                    <dt class="col-sm-4">Transportista</dt>
+                    <dd class="col-sm-8">
+                        {{ bulto.get_transportista_display }}
+                        {% if bulto.transportista == 'OTRO' and bulto.transportista_extra %}
+                        <br><small class="text-muted">{{ bulto.transportista_extra }}</small>
+                        {% endif %}
+                    </dd>
+                    <dt class="col-sm-4">Guía</dt>
+                    <dd class="col-sm-8">{{ bulto.numero_guia_transportista|default:"-" }}</dd>
+                    <dt class="col-sm-4">Peso</dt>
+                    <dd class="col-sm-8">{{ bulto.peso_total }} kg</dd>
+                    <dt class="col-sm-4">Medidas</dt>
+                    <dd class="col-sm-8">{{ bulto.largo_cm }} x {{ bulto.ancho_cm }} x {{ bulto.alto_cm }} cm</dd>
+                    <dt class="col-sm-4">Fecha embalaje</dt>
+                    <dd class="col-sm-8">
+                        {% if bulto.fecha_embalaje %}
+                            {{ bulto.fecha_embalaje|date:"d/m/Y H:i" }}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </dd>
+                    <dt class="col-sm-4">Creado por</dt>
+                    <dd class="col-sm-8">{{ bulto.creado_por|default:"-" }}</dd>
+                    <dt class="col-sm-4">Observaciones</dt>
+                    <dd class="col-sm-8">{{ bulto.observaciones|default:"Sin notas" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light"><strong>Actualizar estado</strong></div>
+            <div class="card-body">
+                <div id="estadoErrors" class="alert alert-danger d-none"></div>
+                <form id="formEstado" method="post" action="{% url 'despacho:actualizar_estado_bulto' bulto.id %}">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="id_estado" class="form-label">Estado:</label>
+                        <select name="estado" class="form-select" id="id_estado" required>
+                            {% for value, label in estado_form.estado.field.choices %}
+                            <option value="{{ value }}" {% if bulto.estado == value %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% if estado_form.estado.errors %}
+                            <div class="text-danger small mt-1">{{ estado_form.estado.errors|striptags }}</div>
+                        {% endif %}
+                        <small class="form-text text-muted">Selecciona el nuevo estado para este bulto</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="id_numero_guia_transportista" class="form-label">{{ estado_form.numero_guia_transportista.label }}:</label>
+                        {{ estado_form.numero_guia_transportista }}
+                        {% if estado_form.numero_guia_transportista.errors %}
+                            <div class="text-danger small mt-1">{{ estado_form.numero_guia_transportista.errors|striptags }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="id_fecha_embalaje" class="form-label">{{ estado_form.fecha_embalaje.label }}:</label>
+                        {{ estado_form.fecha_embalaje }}
+                        {% if estado_form.fecha_embalaje.help_text %}
+                            <small class="form-text text-muted d-block">{{ estado_form.fecha_embalaje.help_text }}</small>
+                        {% endif %}
+                        {% if estado_form.fecha_embalaje.errors %}
+                            <div class="text-danger small mt-1">{{ estado_form.fecha_embalaje.errors|striptags }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{% url 'despacho:gestion' %}" class="btn btn-outline-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary" id="btnEstado">
+                            <span class="spinner-border spinner-border-sm me-2 d-none" id="spinnerEstado"></span>
+                            Guardar cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-light">
+        <strong>Productos incluidos</strong>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Solicitud</th>
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>Cantidad</th>
+                    <th>Estado solicitud</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for detalle in detalles %}
+                <tr>
+                    <td>
+                        <a href="{% url 'solicitudes:detalle' detalle.solicitud.id %}" target="_blank">#{{ detalle.solicitud.id }}</a><br>
+                        <small class="text-muted d-block">{{ detalle.solicitud.cliente }}</small>
+                        <small class="text-muted">OT: {{ detalle.solicitud.numero_ot|default:"-" }}</small>
+                    </td>
+                    <td><code>{{ detalle.codigo }}</code></td>
+                    <td>{{ detalle.descripcion|default:"-" }}</td>
+                    <td>{{ detalle.cantidad }}</td>
+                    <td><span class="badge bg-secondary">{{ detalle.solicitud.get_estado_display }}</span></td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-4">No hay productos asociados.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const formEstado = document.getElementById('formEstado');
+    const spinnerEstado = document.getElementById('spinnerEstado');
+    const btnEstado = document.getElementById('btnEstado');
+    const estadoErrors = document.getElementById('estadoErrors');
+
+    formEstado.addEventListener('submit', function (event) {
+        event.preventDefault();
+        spinnerEstado.classList.remove('d-none');
+        btnEstado.disabled = true;
+        estadoErrors.classList.add('d-none');
+        estadoErrors.innerHTML = '';
+
+        fetch(formEstado.action, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new FormData(formEstado)
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    const errors = data.errors ? Object.values(data.errors).flat().join('<br>') : data.message;
+                    estadoErrors.innerHTML = errors || 'Ocurrió un error.';
+                    estadoErrors.classList.remove('d-none');
+                }
+            })
+            .catch(() => {
+                estadoErrors.innerHTML = 'Error inesperado.';
+                estadoErrors.classList.remove('d-none');
+            })
+            .finally(() => {
+                spinnerEstado.classList.add('d-none');
+                btnEstado.disabled = false;
+            });
+    });
+</script>
+{% endblock %}
+

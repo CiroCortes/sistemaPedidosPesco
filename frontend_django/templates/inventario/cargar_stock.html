@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+
+{% block title %}Cargar Stock SAP{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>🔄 Sincronización de Stock SAP</h1>
+
+    <!-- Estadísticas actuales -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">📦 Productos</h5>
+                    <p class="display-6">{{ stats.total_productos|default:0|floatformat:0 }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">🏭 Bodegas</h5>
+                    <p class="display-6">{{ stats.total_bodegas|default:0 }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">📊 Stock Total</h5>
+                    <p class="display-6">{{ stats.total_stock|default:0|floatformat:0 }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">💰 Valor Total</h5>
+                    <p class="display-6">${{ stats.total_valor|default:0|floatformat:0 }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Última carga -->
+    {% if ultima_carga %}
+    <div class="alert alert-info mt-4">
+        <strong>📅 Última actualización:</strong>
+        {{ ultima_carga.fecha_carga|date:"d/m/Y H:i" }} -
+        {{ ultima_carga.total_productos|floatformat:0 }} registros -
+        {{ ultima_carga.estado }}
+    </div>
+    {% endif %}
+
+    <!-- Formulario de carga -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>📤 Cargar Nuevo Archivo de Stock</h5>
+        </div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="archivo_stock" class="form-label">
+                        Seleccionar archivo de stock (.xlsx o .xls)
+                    </label>
+                    <input type="file" class="form-control" id="archivo_stock" name="archivo_stock" accept=".xlsx,.xls"
+                        required>
+                    <div class="form-text">
+                        Archivo descargado de SAP (stock.xlsx)
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    🚀 Cargar y Procesar
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Historial de cargas -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>📋 Historial de Cargas</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Archivo</th>
+                        <th>Registros</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for carga in historial %}
+                    <tr>
+                        <td>{{ carga.id }}</td>
+                        <td>{{ carga.fecha_carga|date:"d/m/Y H:i" }}</td>
+                        <td>{{ carga.nombre_archivo }}</td>
+                        <td>{{ carga.total_productos|floatformat:0|default:"-" }}</td>
+                        <td>
+                            {% if carga.estado == 'completado' %}
+                            <span class="badge bg-success">✅ Completado</span>
+                            {% elif carga.estado == 'error' %}
+                            <span class="badge bg-danger">❌ Error</span>
+                            {% else %}
+                            <span class="badge bg-warning">⏳ Procesando</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center">No hay cargas registradas</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

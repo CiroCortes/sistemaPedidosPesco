@@ -1,0 +1,463 @@
+{% extends 'base.html' %}
+
+{% block extra_css %}
+<style>
+.modal-wide .modal-dialog {
+    max-width: 70vw;
+}
+</style>
+{% endblock %}
+
+{% block title %}Gestión Despacho{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h2 mb-0">Gestión de Despacho</h1>
+        <p class="text-muted mb-0">Selecciona los códigos que saldrán en cada bulto y controla su estado.</p>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Buscar</label>
+                <input type="text" class="form-control" name="q" value="{{ busqueda }}"
+                    placeholder="Cliente, pedido, ST o ID">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Transporte</label>
+                <select class="form-select" name="transporte">
+                    <option value="">Todos</option>
+                    {% for transporte_conf in transportes %}
+                    <option value="{{ transporte_conf.slug }}" {% if transporte == transporte_conf.slug %}selected{% endif %}>
+                        {{ transporte_conf.nombre }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Estado</label>
+                <select class="form-select" name="estado">
+                    <option value="pendientes" {% if estado_filtro != 'todas' %}selected{% endif %}>Pendientes (en despacho / embalado / listo)</option>
+                    <option value="todas" {% if estado_filtro == 'todas' %}selected{% endif %}>Incluir en ruta y despachadas</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-2">
+                <button class="btn btn-outline-primary w-100">
+                    <i class="bi bi-funnel me-1"></i> Filtrar
+                </button>
+                <a href="{% url 'despacho:gestion' %}" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-x-circle me-1"></i> Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <strong>Solicitudes pendientes</strong>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="btnVerProductos" disabled>
+                <i class="bi bi-eye me-1"></i> Ver productos
+            </button>
+            <button class="btn btn-primary btn-sm" id="btnCrearBulto" disabled>
+                <i class="bi bi-box-seam me-1"></i> Crear bulto
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 520px;">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px;"><input type="checkbox" id="selectAllSolicitudes"></th>
+                        <th>ID / Cliente</th>
+                        <th>Pedido / ST</th>
+                        <th>Transportista</th>
+                        <th>Estado</th>
+                        <th>Códigos</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for solicitud in solicitudes %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="solicitud-checkbox" value="{{ solicitud.id }}"
+                                data-detalles-id="detalles-{{ solicitud.id }}"
+                                data-transporte="{{ solicitud.transporte }}"
+                                data-ot="{{ solicitud.numero_ot|default:'' }}">
+                            <script type="application/json" id="detalles-{{ solicitud.id }}">{{ solicitud.detalles_json|safe }}</script>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">
+                                <a href="{% url 'solicitudes:detalle' solicitud.id %}" target="_blank">#{{ solicitud.id }}</a>
+                                · {{ solicitud.cliente }}
+                            </div>
+                        </td>
+                        <td>
+                            <div>Pedido: {{ solicitud.numero_pedido|default:"-" }}</div>
+                            <small class="text-muted d-block">ST: {{ solicitud.numero_st|default:"-" }}</small>
+                            <small class="text-muted d-block">OT: {{ solicitud.numero_ot|default:"-" }}</small>
+                        </td>
+                        <td>{{ solicitud.get_transporte_display }}</td>
+                        <td><span class="badge bg-{{ solicitud.color_estado }}">{{ solicitud.get_estado_display }}</span></td>
+                        <td>
+                            <div class="d-flex flex-column gap-1">
+                                <span class="badge bg-dark">{{ solicitud.total_codigos }} total</span>
+                                {% if solicitud.codigos_en_bultos > 0 %}
+                                <span class="badge bg-success">{{ solicitud.codigos_en_bultos }} en bultos</span>
+                                {% endif %}
+                                {% if solicitud.codigos_pendientes > 0 %}
+                                <span class="badge bg-warning text-dark">{{ solicitud.codigos_pendientes }} pendientes</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-secondary btn-ver-productos" data-detalles-id="detalles-{{ solicitud.id }}">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-5">No hay solicitudes para mostrar.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-light">
+        <strong>Bultos recientes</strong>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Código</th>
+                    <th>Estado</th>
+                    <th>Transportista</th>
+                    <th>Solicitudes</th>
+                    <th>Códigos</th>
+                    <th>Creado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bulto in bultos %}
+                <tr>
+                    <td>{{ bulto.codigo }}</td>
+                    <td><span class="badge bg-secondary">{{ bulto.get_estado_display }}</span></td>
+                    <td>{{ bulto.get_transportista_display }}</td>
+                    <td>{{ bulto.solicitudes.count }}</td>
+                    <td>{{ bulto.detalles.count }}</td>
+                    <td>{{ bulto.fecha_creacion|date:"d/m/Y H:i" }}</td>
+                    <td><a class="btn btn-sm btn-outline-primary" href="{% url 'despacho:detalle_bulto' bulto.id %}"><i class="bi bi-box-arrow-up-right"></i></a></td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">Sin bultos registrados todavía.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal selección de productos y creación de bulto -->
+<div class="modal fade modal-wide" id="modalBulto" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Selecciona productos y completa los datos del bulto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="seleccionErrors" class="alert alert-danger d-none"></div>
+                <div id="seleccionProductosContainer" class="mb-4"></div>
+                <div id="formErrors" class="alert alert-danger d-none"></div>
+                <form id="formBulto" method="post" action="{% url 'despacho:crear_bulto' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="detalle_ids" id="detalleIdsField">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo de bulto</label>
+                            {{ form.tipo }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Transportista</label>
+                            <select name="{{ form.transportista.name }}" class="form-select" id="id_{{ form.transportista.name }}">
+                                {% for value, label in form.transportista.field.choices %}
+                                <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Transportista externo</label>
+                            {{ form.transportista_extra }}
+                            <small class="text-muted">Completar solo cuando eliges OTRO.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">N° guía transportista</label>
+                            {{ form.numero_guia_transportista }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Peso total (kg)</label>
+                            {{ form.peso_total }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Largo (cm)</label>
+                            {{ form.largo_cm }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Ancho (cm)</label>
+                            {{ form.ancho_cm }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Alto (cm)</label>
+                            {{ form.alto_cm }}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Observaciones</label>
+                            {{ form.observaciones }}
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal" id="btnCancelarBulto">Cancelar</button>
+                <button class="btn btn-primary" id="btnSubmitBulto">
+                    <span class="spinner-border spinner-border-sm me-2 d-none" id="spinnerBulto"></span>
+                    Crear bulto
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const modalBulto = new bootstrap.Modal(document.getElementById('modalBulto'));
+    const btnCrearBulto = document.getElementById('btnCrearBulto');
+    const btnVerProductos = document.getElementById('btnVerProductos');
+    const solicitudCheckboxes = Array.from(document.querySelectorAll('.solicitud-checkbox'));
+    const selectAllSolicitudes = document.getElementById('selectAllSolicitudes');
+    const botonesVerFila = document.querySelectorAll('.btn-ver-productos');
+    const formBulto = document.getElementById('formBulto');
+    const formErrors = document.getElementById('formErrors');
+    const seleccionErrors = document.getElementById('seleccionErrors');
+    const seleccionContainer = document.getElementById('seleccionProductosContainer');
+    const spinner = document.getElementById('spinnerBulto');
+    const btnSubmit = document.getElementById('btnSubmitBulto');
+    const btnCancelar = document.getElementById('btnCancelarBulto');
+
+    function updateButtonState() {
+        const selected = solicitudCheckboxes.filter(cb => cb.checked).length;
+        btnCrearBulto.disabled = selected === 0;
+        btnVerProductos.disabled = selected === 0;
+    }
+
+    solicitudCheckboxes.forEach(cb => cb.addEventListener('change', updateButtonState));
+
+    if (selectAllSolicitudes) {
+        selectAllSolicitudes.addEventListener('change', () => {
+            solicitudCheckboxes.forEach(cb => cb.checked = selectAllSolicitudes.checked);
+            updateButtonState();
+        });
+    }
+
+    function getSelectedSolicitudIds() {
+        return solicitudCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
+    }
+
+    function getCheckboxSolicitud(id) {
+        return document.querySelector(`.solicitud-checkbox[value="${id}"]`);
+    }
+
+    function construirSeleccion(ids, soloLectura = false) {
+        seleccionContainer.innerHTML = '';
+        seleccionErrors.classList.add('d-none');
+        seleccionErrors.innerHTML = '';
+        let disponibles = 0;
+        const transportistaField = document.getElementById('id_transportista');
+        const transportistaExtra = document.getElementById('id_transportista_extra');
+
+        if (!soloLectura && ids.length === 1) {
+            const checkboxSolicitud = getCheckboxSolicitud(ids[0]);
+            if (checkboxSolicitud) {
+                transportistaField.value = checkboxSolicitud.dataset.transporte || '';
+                if ((checkboxSolicitud.dataset.transporte || '') !== 'OTRO') {
+                    transportistaExtra.value = '';
+                }
+            }
+        }
+
+        ids.forEach(id => {
+            const script = document.getElementById(`detalles-${id}`);
+            if (!script) return;
+            const detalles = JSON.parse(script.textContent);
+            const checkboxSolicitud = getCheckboxSolicitud(id);
+            const numeroOt = checkboxSolicitud ? (checkboxSolicitud.dataset.ot || '-') : '-';
+
+            const card = document.createElement('div');
+            card.className = 'border rounded mb-3';
+
+            const disponiblesSolicitud = detalles.filter(d => !d.bulto_id).length;
+            disponibles += disponiblesSolicitud;
+
+            card.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center p-3 border-bottom bg-light">
+                    <div>
+                        <strong>Solicitud #${id}</strong>
+                        <span class="badge bg-dark ms-2">${detalles.length} total</span>
+                        ${detalles.filter(d => d.bulto_id).length > 0 ? `<span class="badge bg-success ms-1">${detalles.filter(d => d.bulto_id).length} en bultos</span>` : ''}
+                        ${disponiblesSolicitud > 0 ? `<span class="badge bg-warning text-dark ms-1">${disponiblesSolicitud} pendientes</span>` : ''}
+                        <span class="badge bg-light text-dark ms-2 border">OT: ${numeroOt || '-'}</span>
+                    </div>
+                    <div>
+                        ${disponiblesSolicitud > 0 ? `
+                        <input type="checkbox" class="form-check-input select-all-productos" data-target=".productos-solicitud-${id}" ${soloLectura ? 'disabled' : 'checked'}>
+                        <label class="form-check-label ms-1">Seleccionar pendientes</label>
+                        ` : '<span class="text-success"><i class="bi bi-check-circle"></i> Todos en bultos</span>'}
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width:40px;"></th>
+                                <th>Código</th>
+                                <th>Descripción</th>
+                                <th>Bodega</th>
+                                <th>Cantidad</th>
+                                <th>Bulto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${detalles.map(det => {
+                                const estaPreparado = det.estado_bodega === 'preparado' || det.preparado;
+                                const tieneAlerta = !estaPreparado && !det.bulto_id;
+                                return `
+                                <tr class="${tieneAlerta ? 'table-warning' : ''}">
+                                    <td>
+                                        ${det.bulto_id ? `<span class="badge bg-secondary">Asignado</span>` : 
+                                          estaPreparado ? `<input type="checkbox" class="form-check-input checkbox-detalle-modal productos-solicitud-${id}" value="${det.id}" ${soloLectura ? 'disabled' : 'checked'}>` :
+                                          `<span class="badge bg-warning text-dark" title="No preparado por bodega">⚠️ Pendiente</span>`
+                                        }
+                                    </td>
+                                    <td><code>${det.codigo}</code></td>
+                                    <td>${det.descripcion}</td>
+                                    <td>${det.bodega}</td>
+                                    <td>${det.cantidad}</td>
+                                    <td>
+                                        ${det.bulto_id ? `<a href="/despacho/bultos/${det.bulto_id}/" target="_blank" class="badge bg-primary text-decoration-none"><i class="bi bi-box-seam me-1"></i>${det.bulto_codigo}</a>` : 
+                                          (estaPreparado ? '<span class="badge bg-success">✓ Listo</span>' : `<span class="badge bg-secondary">${det.estado_bodega_display || 'Pendiente'}</span>`)}
+                                    </td>
+                                </tr>
+                            `}).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            seleccionContainer.appendChild(card);
+        });
+
+        seleccionContainer.querySelectorAll('.select-all-productos').forEach(toggle => {
+            toggle.addEventListener('change', () => {
+                const targetClass = toggle.dataset.target;
+                seleccionContainer.querySelectorAll(targetClass).forEach(cb => {
+                    if (!cb.disabled) {
+                        cb.checked = toggle.checked;
+                    }
+                });
+            });
+        });
+
+        return disponibles;
+    }
+
+    btnCrearBulto.addEventListener('click', () => {
+        const selectedIds = getSelectedSolicitudIds();
+        if (!selectedIds.length) return;
+
+        formErrors.classList.add('d-none');
+        formErrors.innerHTML = '';
+
+        const disponibles = construirSeleccion(selectedIds);
+        if (!disponibles) {
+            seleccionErrors.innerHTML = 'Todos los códigos seleccionados ya pertenecen a un bulto.';
+            seleccionErrors.classList.remove('d-none');
+            return;
+        }
+
+        btnSubmit.disabled = false;
+        modalBulto.show();
+    });
+
+    btnVerProductos.addEventListener('click', () => {
+        const selectedIds = getSelectedSolicitudIds();
+        if (!selectedIds.length) return;
+        construirSeleccion(selectedIds, true);
+        formErrors.classList.add('d-none');
+        formErrors.innerHTML = '';
+        document.getElementById('detalleIdsField').value = '';
+        btnSubmit.disabled = true;
+        modalBulto.show();
+    });
+
+    botonesVerFila.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const script = document.getElementById(btn.dataset.detallesId);
+            if (!script) return;
+            const solicitudId = btn.dataset.detallesId.replace('detalles-', '');
+            construirSeleccion([solicitudId], false);
+            formErrors.classList.add('d-none');
+            formErrors.innerHTML = '';
+            document.getElementById('detalleIdsField').value = '';
+            btnSubmit.disabled = false;
+            modalBulto.show();
+        });
+    });
+
+    function setLoading(state) {
+        if (state) {
+            spinner.classList.remove('d-none');
+            btnSubmit.disabled = true;
+            btnCancelar.disabled = true;
+        } else {
+            spinner.classList.add('d-none');
+            btnSubmit.disabled = false;
+            btnCancelar.disabled = false;
+        }
+    }
+
+    btnSubmit.addEventListener('click', () => {
+        const seleccionados = Array.from(document.querySelectorAll('.checkbox-detalle-modal:not(:disabled):checked')).map(cb => cb.value);
+        if (!seleccionados.length) {
+            formErrors.textContent = 'Debes seleccionar al menos un producto.';
+            formErrors.classList.remove('d-none');
+            return;
+        }
+
+        document.getElementById('detalleIdsField').value = seleccionados.join(',');
+        setLoading(true);
+        formBulto.submit();
+    });
+
+    formBulto.addEventListener('submit', () => {
+        btnSubmit.disabled = true;
+    });
+
+    updateButtonState();
+</script>
+{% endblock %}
+

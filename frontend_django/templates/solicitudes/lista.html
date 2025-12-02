@@ -27,30 +27,43 @@
                         <span class="input-group-text bg-light border-end-0">
                             <i class="bi bi-search text-muted"></i>
                         </span>
-                        <input type="text" name="q" class="form-control border-start-0 ps-0"
-                            placeholder="Buscar por cliente, pedido, ST..." value="{{ busqueda|default:'' }}">
+                        <input type="text" name="q" class="form-control border-start-0"
+                            placeholder="Buscar por ID, cliente, pedido..." value="{{ busqueda }}">
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <select name="estado" class="form-select" onchange="this.form.submit()">
+                <div class="col-md-2">
+                    <select name="estado" class="form-select">
                         <option value="">Todos los estados</option>
-                        <option value="PENDIENTE" {% if estado == 'PENDIENTE' %}selected{% endif %}>Pendiente</option>
-                        <option value="EN_PROCESO" {% if estado == 'EN_PROCESO' %}selected{% endif %}>En Proceso</option>
-                        <option value="COMPLETADO" {% if estado == 'COMPLETADO' %}selected{% endif %}>Completado</option>
-                        <option value="CANCELADO" {% if estado == 'CANCELADO' %}selected{% endif %}>Cancelado</option>
+                        {% for estado_conf in estados_config %}
+                        <option value="{{ estado_conf.slug }}" {% if estado == estado_conf.slug %}selected{% endif %}>
+                            {{ estado_conf.nombre }}
+                        </option>
+                        {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <select name="tipo" class="form-select" onchange="this.form.submit()">
+                <div class="col-md-2">
+                    <select name="tipo" class="form-select">
                         <option value="">Todos los tipos</option>
-                        <option value="OC" {% if tipo == 'OC' %}selected{% endif %}>Orden de Compra</option>
-                        <option value="ST" {% if tipo == 'ST' %}selected{% endif %}>Solicitud de Traslado</option>
-                        <option value="PC" {% if tipo == 'PC' %}selected{% endif %}>Pedido Cliente</option>
+                        <option value="VENTA" {% if tipo == 'VENTA' %}selected{% endif %}>Venta</option>
+                        <option value="ORDEN_FABRICACION" {% if tipo == 'ORDEN_FABRICACION' %}selected{% endif %}>Orden de
+                            Fabricación</option>
+                        <option value="TRANSFERENCIA" {% if tipo == 'TRANSFERENCIA' %}selected{% endif %}>Transferencia
+                        </option>
                     </select>
                 </div>
-                <div class="col-md-2 text-end">
-                    {% if busqueda or estado or tipo %}
-                    <a href="{% url 'solicitudes:lista' %}" class="btn btn-outline-secondary w-100">
+                <div class="col-md-2">
+                    <select name="urgente" class="form-select">
+                        <option value="">Todas las prioridades</option>
+                        <option value="1" {% if urgente == '1' %}selected{% endif %}>Sólo urgentes</option>
+                        <option value="0" {% if urgente == '0' %}selected{% endif %}>Sólo normales</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-funnel me-1"></i> Filtrar
+                    </button>
+                    {% if busqueda or estado or tipo or urgente %}
+                    <a href="." class="btn btn-outline-secondary w-100 mt-2">
                         <i class="bi bi-x-circle me-1"></i> Limpiar
                     </a>
                     {% endif %}
@@ -69,11 +82,10 @@
                             <th class="ps-4 py-3">ID</th>
                             <th class="py-3">Fecha / Hora</th>
                             <th class="py-3">Tipo</th>
-                            <th class="py-3">Referencia</th>
+                            <th class="py-3">Número</th>
                             <th class="py-3">Cliente</th>
-                            <th class="py-3 text-center">Items</th>
                             <th class="py-3">Estado</th>
-                            <th class="py-3">Prioridad</th>
+                            <th class="py-3">Bultos</th>
                             <th class="py-3">Transporte</th>
                             <th class="pe-4 py-3 text-end">Acciones</th>
                         </tr>
@@ -89,41 +101,45 @@
                                 </div>
                             </td>
                             <td>
-                                <span class="badge bg-light text-dark border">
+                                <span class="badge bg-secondary px-2 py-1" style="border-radius: 4px;">
                                     {{ solicitud.get_tipo_display }}
                                 </span>
                             </td>
                             <td>
                                 {% if solicitud.tipo == 'ST' and solicitud.numero_st %}
-                                <span class="font-monospace">{{ solicitud.numero_st }}</span>
+                                    <code class="text-primary">{{ solicitud.numero_st }}</code>
                                 {% elif solicitud.numero_pedido %}
-                                <span class="font-monospace">{{ solicitud.numero_pedido }}</span>
+                                    <code class="text-dark">{{ solicitud.numero_pedido }}</code>
                                 {% else %}
-                                <span class="text-muted">-</span>
+                                    <span class="text-muted small">—</span>
                                 {% endif %}
                             </td>
-                            <td class="fw-medium">{{ solicitud.cliente }}</td>
-                            <td class="text-center">
-                                <span class="badge bg-secondary rounded-pill">{{ solicitud.total_codigos }}</span>
+                            <td>
+                                <span class="fw-medium">{{ solicitud.cliente|truncatewords:5 }}</span>
                             </td>
                             <td>
-                                <span class="badge bg-{{ solicitud.color_estado }} px-3 py-2" style="border-radius: 4px;">
+                                <span class="badge bg-{{ solicitud.color_estado }} px-3 py-2"
+                                    style="border-radius: 4px;">
                                     {{ solicitud.get_estado_display }}
                                 </span>
                             </td>
                             <td>
-                                {% if solicitud.urgente %}
-                                <span class="badge bg-danger text-white px-3 py-2 fw-bold" style="border-radius: 4px;">
-                                    <i class="bi bi-exclamation-triangle-fill me-1"></i> Urgente
-                                </span>
+                                {% with bultos=solicitud.bultos.all %}
+                                {% if bultos %}
+                                    {% for bulto in bultos %}
+                                    <a href="{% url 'despacho:detalle_bulto' bulto.id %}" class="badge bg-primary text-decoration-none me-1" title="{{ bulto.codigo }}">
+                                        <i class="bi bi-box-seam me-1"></i>{{ forloop.counter }}
+                                    </a>
+                                    {% endfor %}
                                 {% else %}
-                                <span class="badge bg-light text-dark border px-3 py-2" style="border-radius: 4px;">Normal</span>
+                                    <span class="text-muted small">Sin bultos</span>
                                 {% endif %}
+                                {% endwith %}
                             </td>
                             <td>
                                 <div class="d-flex align-items-center">
                                     <i class="bi bi-truck text-muted me-2"></i>
-                                    {{ solicitud.get_transporte_display }}
+                                    <span class="small">{{ solicitud.get_transporte_display }}</span>
                                 </div>
                             </td>
                             <td class="pe-4 text-end">
@@ -136,6 +152,12 @@
                                         class="btn btn-sm btn-light text-secondary" title="Ver detalle completo">
                                         <i class="bi bi-box-arrow-up-right"></i>
                                     </a>
+                                    {% if es_admin %}
+                                    <a href="{% url 'solicitudes:editar' solicitud.id %}"
+                                        class="btn btn-sm btn-light text-warning" title="Editar">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
@@ -219,6 +241,30 @@
                     </div>
                 </div>
                 <div class="modal-footer bg-light">
+                    {% if es_admin %}
+                    <div class="me-auto">
+                        <a href="#" id="btnEditarSolicitud" class="btn btn-primary">
+                            <i class="bi bi-pencil me-1"></i>Editar
+                        </a>
+                        <div class="btn-group ms-2">
+                            <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                <i class="bi bi-gear me-1"></i>Acciones
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="#" onclick="cambiarEstadoModal(); return false;">
+                                    <i class="bi bi-arrow-repeat me-2"></i>Cambiar Estado
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="toggleAfectaStockModal(); return false;">
+                                    <i class="bi bi-box me-2"></i><span id="textoAfectaStock">Gestionar Stock</span>
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-success" href="#" onclick="marcarDespachadoModal(); return false;">
+                                    <i class="bi bi-check-circle me-2"></i>Marcar como Despachado
+                                </a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    {% endif %}
                     <a href="#" id="btnVerCompleto" class="btn btn-primary" target="_blank">
                         <i class="bi bi-box-arrow-up-right me-2"></i>Ver detalle completo
                     </a>
@@ -227,11 +273,34 @@
             </div>
         </div>
     </div>
+    
+    <!-- Configuración para JavaScript -->
+    <div id="appConfig" style="display:none;"
+         data-detalle-ajax-url="{% url 'solicitudes:detalle_ajax' 0 %}"
+         data-detalle-completo-url="{% url 'solicitudes:detalle' 0 %}"
+         data-editar-url="{% url 'solicitudes:editar' 0 %}"
+         data-cambiar-estado-url="{% url 'solicitudes:cambiar_estado' 0 %}"
+         data-cambiar-afecta-stock-url="{% url 'solicitudes:cambiar_afecta_stock' 0 %}"
+         data-csrf-token="{{ csrf_token }}"
+         data-es-admin="{% if es_admin %}true{% else %}false{% endif %}">
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    // Leer configuración desde el DOM
+    const appConfig = document.getElementById('appConfig');
+    const detalleAjaxBaseUrl = appConfig.dataset.detalleAjaxUrl;
+    const detalleCompletoBaseUrl = appConfig.dataset.detalleCompletoUrl;
+    const editarBaseUrl = appConfig.dataset.editarUrl;
+    const cambiarEstadoBaseUrl = appConfig.dataset.cambiarEstadoUrl;
+    const cambiarAfectaStockBaseUrl = appConfig.dataset.cambiarAfectaStockUrl;
+    const csrfToken = appConfig.dataset.csrfToken;
+    const esAdmin = appConfig.dataset.esAdmin === 'true';
+    
+    let solicitudActual = null;
+
     function verDetalleSolicitud(solicitudId) {
         const modal = new bootstrap.Modal(document.getElementById('modalDetalleSolicitud'));
         const modalContenido = document.getElementById('modalContenido');
@@ -239,22 +308,24 @@
         const btnVerCompleto = document.getElementById('btnVerCompleto');
 
         // Mostrar loading
-        modalContenido.innerHTML = `
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Cargando...</span>
-            </div>
-        </div>
-    `;
+        modalContenido.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div></div>';
 
-        // Actualizar link de ver completo
-        btnVerCompleto.href = `/solicitudes/${solicitudId}/`;
+        // Actualizar links
+        btnVerCompleto.href = detalleCompletoBaseUrl.replace('0/', solicitudId + '/');
+        
+        if (esAdmin) {
+            const btnEditarSolicitud = document.getElementById('btnEditarSolicitud');
+            if (btnEditarSolicitud) {
+                btnEditarSolicitud.href = editarBaseUrl.replace('0/', solicitudId + '/');
+            }
+        }
 
         // Abrir modal
         modal.show();
 
         // Cargar datos via AJAX
-        fetch(`/solicitudes/${solicitudId}/ajax/`)
+        const ajaxUrl = detalleAjaxBaseUrl.replace('0/', solicitudId + '/');
+        fetch(ajaxUrl)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Error al cargar la solicitud');
@@ -262,103 +333,373 @@
                 return response.json();
             })
             .then(data => {
-                // Actualizar título
-                modalTitulo.innerHTML = `Solicitud #${data.id} 
-                <span class="badge bg-${data.color_estado}">${data.estado}</span>
-                ${data.urgente ? '<span class="badge bg-danger ms-2"><i class="bi bi-exclamation-triangle me-1"></i>Urgente</span>' : ''}`;
-
-                // Generar HTML de productos
-                let productosHtml = '';
-                data.productos.forEach(prod => {
-                    productosHtml += `
-                    <tr>
-                        <td><code>${prod.codigo}</code></td>
-                        <td>${prod.descripcion}</td>
-                        <td>${prod.cantidad}</td>
-                    </tr>
-                `;
-                });
-
-                // Actualizar contenido
-                modalContenido.innerHTML = `
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6 class="border-bottom pb-2 mb-3">Información General</h6>
-                        <dl class="row">
-                            <dt class="col-sm-5">Fecha:</dt>
-                            <dd class="col-sm-7">${data.fecha} - ${data.hora}</dd>
-                            
-                            <dt class="col-sm-5">Tipo:</dt>
-                            <dd class="col-sm-7">${data.tipo}</dd>
-                            
-                            <dt class="col-sm-5">N° Pedido / OF:</dt>
-                            <dd class="col-sm-7">${data.numero_pedido}</dd>
-                            
-                            <dt class="col-sm-5">N° ST:</dt>
-                            <dd class="col-sm-7">${data.numero_st}</dd>
-                            
-                            <dt class="col-sm-5">Cliente:</dt>
-                            <dd class="col-sm-7"><strong>${data.cliente}</strong></dd>
-                            
-                            <dt class="col-sm-5">Bodega:</dt>
-                            <dd class="col-sm-7">${data.bodega}</dd>
-                            
-                            <dt class="col-sm-5">Transporte:</dt>
-                            <dd class="col-sm-7">${data.transporte}</dd>
-                        </dl>
-                    </div>
-                    
-                    <div class="col-md-6">
-                        <h6 class="border-bottom pb-2 mb-3">Descripción</h6>
-                        <p class="text-muted small">${data.descripcion}</p>
-                        
-                        <h6 class="border-bottom pb-2 mb-3 mt-4">Observaciones</h6>
-                        <p class="text-muted small">${data.observacion}</p>
-                        
-                        <h6 class="border-bottom pb-2 mb-3 mt-4">Metadatos</h6>
-                        <dl class="row small">
-                            <dt class="col-sm-5">Solicitante:</dt>
-                            <dd class="col-sm-7">${data.solicitante}</dd>
-                            
-                            <dt class="col-sm-5">Creado:</dt>
-                            <dd class="col-sm-7">${data.created_at}</dd>
-                            
-                            <dt class="col-sm-5">Actualizado:</dt>
-                            <dd class="col-sm-7">${data.updated_at}</dd>
-                        </dl>
-                    </div>
-                </div>
-                
-                <div class="row mt-4">
-                    <div class="col-12">
-                        <h6 class="border-bottom pb-2 mb-3">Productos (${data.productos.length})</h6>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Código</th>
-                                        <th>Descripción</th>
-                                        <th style="width: 120px;">Cantidad</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${productosHtml}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
+                solicitudActual = data;
+                actualizarModalContenido(data, modalTitulo, modalContenido);
             })
             .catch(error => {
-                modalContenido.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-                    Error al cargar los detalles de la solicitud.
-                </div>
-            `;
+                modalContenido.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>Error al cargar los detalles de la solicitud.</div>';
                 console.error('Error:', error);
             });
+    }
+
+    function actualizarModalContenido(data, modalTitulo, modalContenido) {
+        // Actualizar título
+        let tituloHtml = 'Solicitud #' + data.id + ' <span class="badge bg-' + data.color_estado + '">' + data.estado + '</span>';
+        
+        if (data.urgente) {
+            tituloHtml += '<span class="badge bg-danger ms-2"><i class="bi bi-exclamation-triangle me-1"></i>Urgente</span>';
+        }
+        
+        if (data.afecta_stock === false) {
+            tituloHtml += '<span class="badge bg-info text-dark ms-2" title="No afecta stock"><i class="bi bi-info-circle me-1"></i>Sin afectar stock</span>';
+        }
+        
+        modalTitulo.innerHTML = tituloHtml;
+
+        // Generar HTML de productos
+        let productosHtml = '';
+        data.productos.forEach(function(prod) {
+            let rowClass = prod.bulto_id ? '' : 'table-warning';
+            let bultoInfo = prod.bulto_id ? '<a href="/despacho/bultos/' + prod.bulto_id + '/" target="_blank" class="badge bg-primary text-decoration-none"><i class="bi bi-box-seam me-1"></i>' + prod.bulto_codigo + '</a>' : '<span class="badge bg-warning text-dark">Pendiente</span>';
+            
+            productosHtml += '<tr class="' + rowClass + '">';
+            productosHtml += '<td><code>' + prod.codigo + '</code></td>';
+            productosHtml += '<td>' + prod.descripcion + '</td>';
+            productosHtml += '<td>' + prod.cantidad + '</td>';
+            productosHtml += '<td>' + prod.estado_bodega + '</td>';
+            productosHtml += '<td>' + bultoInfo + '</td>';
+            productosHtml += '</tr>';
+        });
+
+        // Actualizar contenido
+        var contenidoHtml = '<div class="row">';
+        contenidoHtml += '<div class="col-md-6">';
+        contenidoHtml += '<h6 class="border-bottom pb-2 mb-3">Información General</h6>';
+        contenidoHtml += '<dl class="row">';
+        contenidoHtml += '<dt class="col-sm-5">Fecha:</dt><dd class="col-sm-7">' + data.fecha + ' - ' + data.hora + '</dd>';
+        contenidoHtml += '<dt class="col-sm-5">Tipo:</dt><dd class="col-sm-7">' + data.tipo + '</dd>';
+        contenidoHtml += '<dt class="col-sm-5">N° Pedido / OF:</dt><dd class="col-sm-7">' + data.numero_pedido + '</dd>';
+        contenidoHtml += '<dt class="col-sm-5">N° ST:</dt><dd class="col-sm-7">' + data.numero_st + '</dd>';
+        contenidoHtml += '<dt class="col-sm-5">N° OT:</dt><dd class="col-sm-7">' + data.numero_ot + '</dd>';
+        if (data.numero_guia_despacho) {
+            contenidoHtml += '<dt class="col-sm-5">Guía/Factura:</dt><dd class="col-sm-7"><span class="badge bg-success">' + data.numero_guia_despacho + '</span></dd>';
+        }
+        contenidoHtml += '<dt class="col-sm-5">Cliente:</dt><dd class="col-sm-7"><strong>' + data.cliente + '</strong></dd>';
+        contenidoHtml += '<dt class="col-sm-5">Bodega:</dt><dd class="col-sm-7">' + data.bodega + '</dd>';
+        contenidoHtml += '<dt class="col-sm-5">Transporte:</dt><dd class="col-sm-7">' + data.transporte + '</dd>';
+        contenidoHtml += '</dl></div>';
+        
+        contenidoHtml += '<div class="col-md-6">';
+        contenidoHtml += '<h6 class="border-bottom pb-2 mb-3">Descripción</h6>';
+        contenidoHtml += '<p class="text-muted small">' + data.descripcion + '</p>';
+        contenidoHtml += '<h6 class="border-bottom pb-2 mb-3 mt-4">Observaciones</h6>';
+        contenidoHtml += '<p class="text-muted small">' + data.observacion + '</p>';
+        contenidoHtml += '<h6 class="border-bottom pb-2 mb-3 mt-4">Metadatos</h6>';
+        contenidoHtml += '<dl class="row small">';
+        contenidoHtml += '<dt class="col-sm-5">Solicitante:</dt><dd class="col-sm-7">' + data.solicitante + '</dd>';
+        contenidoHtml += '<dt class="col-sm-5">Creado:</dt><dd class="col-sm-7">' + data.created_at + '</dd>';
+        contenidoHtml += '<dt class="col-sm-5">Actualizado:</dt><dd class="col-sm-7">' + data.updated_at + '</dd>';
+        contenidoHtml += '</dl></div></div>';
+        
+        // Información de bultos
+        var bultosHtml = '';
+        if (data.bultos && data.bultos.length > 0) {
+            contenidoHtml += '<div class="row mt-4"><div class="col-12">';
+            contenidoHtml += '<h6 class="border-bottom pb-2 mb-3">Bultos Asociados (' + data.bultos.length + ')</h6>';
+            
+            data.bultos.forEach(function(bulto) {
+                contenidoHtml += '<div class="card mb-3 border-primary">';
+                contenidoHtml += '<div class="card-header bg-primary text-white py-2">';
+                contenidoHtml += '<strong><i class="bi bi-box-seam me-2"></i>' + bulto.codigo + '</strong>';
+                contenidoHtml += '<span class="ms-3 badge bg-light text-dark">' + bulto.estado + '</span>';
+                contenidoHtml += '<a href="/despacho/bultos/' + bulto.id + '/" target="_blank" class="btn btn-sm btn-light float-end"><i class="bi bi-box-arrow-up-right"></i></a>';
+                contenidoHtml += '</div>';
+                contenidoHtml += '<div class="card-body p-2">';
+                contenidoHtml += '<div class="row g-2">';
+                contenidoHtml += '<div class="col-md-6"><small class="text-muted">Tipo:</small> <strong>' + bulto.tipo + '</strong></div>';
+                contenidoHtml += '<div class="col-md-6"><small class="text-muted">Transportista:</small> <strong>' + bulto.transportista + '</strong></div>';
+                contenidoHtml += '<div class="col-md-3"><small class="text-muted">Peso:</small> <strong>' + bulto.peso + ' kg</strong></div>';
+                contenidoHtml += '<div class="col-md-3"><small class="text-muted">Largo:</small> <strong>' + bulto.largo + ' cm</strong></div>';
+                contenidoHtml += '<div class="col-md-3"><small class="text-muted">Ancho:</small> <strong>' + bulto.ancho + ' cm</strong></div>';
+                contenidoHtml += '<div class="col-md-3"><small class="text-muted">Alto:</small> <strong>' + bulto.alto + ' cm</strong></div>';
+                contenidoHtml += '<div class="col-md-12"><small class="text-muted">Códigos en bulto:</small> <span class="badge bg-secondary">' + bulto.codigos.length + '</span>';
+                bulto.codigos.forEach(function(cod) {
+                    contenidoHtml += ' <code class="ms-1">' + cod + '</code>';
+                });
+                contenidoHtml += '</div>';
+                contenidoHtml += '</div></div></div>';
+            });
+            
+            contenidoHtml += '</div></div>';
+        }
+        
+        contenidoHtml += '<div class="row mt-4"><div class="col-12">';
+        var pendientes = data.productos.filter(function(p) { return !p.bulto_id; }).length;
+        var enBultos = data.productos.filter(function(p) { return p.bulto_id; }).length;
+        contenidoHtml += '<h6 class="border-bottom pb-2 mb-3">Productos (' + data.productos.length + ' total';
+        if (enBultos > 0) contenidoHtml += ' - <span class="text-success">' + enBultos + ' en bultos</span>';
+        if (pendientes > 0) contenidoHtml += ' - <span class="text-warning">' + pendientes + ' pendientes</span>';
+        contenidoHtml += ')</h6>';
+        contenidoHtml += '<div class="table-responsive"><table class="table table-sm table-hover">';
+        contenidoHtml += '<thead class="table-light"><tr><th>Código</th><th>Descripción</th><th>Cantidad</th><th>Estado</th><th>Bulto</th></tr></thead>';
+        contenidoHtml += '<tbody>' + productosHtml + '</tbody>';
+        contenidoHtml += '</table></div></div></div>';
+        
+        modalContenido.innerHTML = contenidoHtml;
+    }
+    
+    // Funciones de admin (siempre definidas para evitar errores de undefined)
+    function cambiarEstadoModal() {
+        if (!esAdmin) {
+            Swal.fire('Error', 'No tienes permisos para realizar esta acción', 'error');
+            return;
+        }
+        if (!solicitudActual) return;
+        
+        const estados = [
+            { value: 'pendiente', label: 'Pendiente' },
+            { value: 'en_despacho', label: 'En Despacho' },
+            { value: 'embalado', label: 'Embalado' },
+            { value: 'listo_despacho', label: 'Listo para Despacho' },
+            { value: 'en_ruta', label: 'En Ruta' },
+            { value: 'despachado', label: 'Despachado' },
+            { value: 'cancelado', label: 'Cancelado' }
+        ];
+        
+        let opciones = estados.map(function(e) {
+            return '<option value="' + e.value + '">' + e.label + '</option>';
+        }).join('');
+        
+        Swal.fire({
+            title: 'Cambiar Estado',
+            html: '<select id="nuevoEstado" class="form-select">' + opciones + '</select>',
+            showCancelButton: true,
+            confirmButtonText: 'Cambiar',
+            cancelButtonText: 'Cancelar',
+            preConfirm: function() {
+                return document.getElementById('nuevoEstado').value;
+            }
+        }).then(function(result) {
+            if (result.isConfirmed) {
+                const nuevoEstado = result.value;
+                
+                if (nuevoEstado === 'despachado') {
+                    Swal.fire({
+                        title: '¿Estás seguro?',
+                        text: 'Al marcar como despachado se descontará el stock de bodega 013',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, despachar',
+                        cancelButtonText: 'Cancelar'
+                    }).then(function(confirmResult) {
+                        if (confirmResult.isConfirmed) {
+                            ejecutarCambioEstadoModal(nuevoEstado);
+                        }
+                    });
+                } else {
+                    ejecutarCambioEstadoModal(nuevoEstado);
+                }
+            }
+        });
+    }
+
+    function ejecutarCambioEstadoModal(nuevoEstado) {
+        if (!solicitudActual) return;
+        
+        const url = cambiarEstadoBaseUrl.replace('0/', solicitudActual.id + '/');
+        
+        console.log('Cambiando estado a:', nuevoEstado, 'para solicitud:', solicitudActual.id);
+        console.log('URL:', url);
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'estado=' + nuevoEstado
+        })
+        .then(function(response) {
+            console.log('Response status:', response.status);
+            return response.json();
+        })
+        .then(function(data) {
+            console.log('Response data:', data);
+            if (data.success) {
+                let mensaje = data.message;
+                if (data.descuento) {
+                    mensaje += '\n\nDetalles del descuento:\n';
+                    if (data.descuento.detalles) {
+                        data.descuento.detalles.forEach(function(det) {
+                            mensaje += '\n• ' + det.codigo + ': ' + det.stock_anterior + ' → ' + det.stock_nuevo;
+                        });
+                    }
+                }
+                Swal.fire({
+                    title: '¡Éxito!',
+                    html: mensaje.replace(/\n/g, '<br>'),
+                    icon: data.warning ? 'warning' : 'success'
+                }).then(function() {
+                    location.reload();
+                });
+            } else {
+                Swal.fire('Error', data.message, 'error');
+            }
+        })
+        .catch(function(error) {
+            console.error('Error en fetch:', error);
+            Swal.fire('Error', 'Hubo un problema al cambiar el estado: ' + error, 'error');
+        });
+    }
+
+    function marcarDespachadoModal() {
+        console.log('🔔 marcarDespachadoModal() llamado');
+        console.log('   esAdmin:', esAdmin);
+        console.log('   solicitudActual:', solicitudActual);
+        
+        if (!esAdmin) {
+            console.error('❌ Usuario no es admin');
+            Swal.fire('Error', 'No tienes permisos para realizar esta acción', 'error');
+            return;
+        }
+        if (!solicitudActual) {
+            console.error('❌ No hay solicitud actual');
+            return;
+        }
+        
+        console.log('✅ Mostrando modal de confirmación para solicitud #' + solicitudActual.id);
+        
+        Swal.fire({
+            title: 'Confirmar Despacho',
+            html: '<div class="text-start">' +
+                  '<p class="mb-3">Se descontará el stock de bodega 013 para todos los productos que estén en bultos.</p>' +
+                  '<p class="mb-3"><strong>Esta acción confirma la salida definitiva de la mercancía.</strong></p>' +
+                  '<div class="mb-3">' +
+                  '<label for="numeroGuiaDespacho" class="form-label">Número de Guía/Factura:</label>' +
+                  '<input type="text" id="numeroGuiaDespacho" class="form-control" placeholder="Ej: 12345678" value="' + (solicitudActual.numero_guia_despacho || '') + '">' +
+                  '<small class="text-muted">Ingresa el número de guía o factura que confirma el despacho</small>' +
+                  '</div>' +
+                  '</div>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, despachar',
+            confirmButtonColor: '#28a745',
+            cancelButtonText: 'Cancelar',
+            preConfirm: function() {
+                const guia = document.getElementById('numeroGuiaDespacho').value;
+                console.log('📝 Guía ingresada:', guia);
+                return guia;
+            }
+        }).then(function(result) {
+            console.log('Modal result:', result);
+            if (result.isConfirmed) {
+                const numeroGuia = result.value;
+                console.log('✅ Confirmado. Ejecutando despacho con guía:', numeroGuia);
+                ejecutarDespachoConGuia('despachado', numeroGuia);
+            } else {
+                console.log('❌ Usuario canceló');
+            }
+        });
+    }
+    
+    function ejecutarDespachoConGuia(nuevoEstado, numeroGuia) {
+        console.log('\n' + '='.repeat(60));
+        console.log('🚀 ejecutarDespachoConGuia()');
+        console.log('='.repeat(60));
+        console.log('Solicitud ID:', solicitudActual ? solicitudActual.id : 'N/A');
+        console.log('Nuevo estado:', nuevoEstado);
+        console.log('Número guía:', numeroGuia);
+        
+        if (!solicitudActual) {
+            console.error('❌ No hay solicitud actual');
+            return;
+        }
+        
+        const url = cambiarEstadoBaseUrl.replace('0/', solicitudActual.id + '/');
+        const body = 'estado=' + nuevoEstado + '&numero_guia_despacho=' + encodeURIComponent(numeroGuia);
+        
+        console.log('URL:', url);
+        console.log('Body:', body);
+        console.log('CSRF Token:', csrfToken);
+        console.log('\n📡 Enviando petición...\n');
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body
+        })
+        .then(function(response) {
+            console.log('📥 Response status:', response.status);
+            console.log('Response ok:', response.ok);
+            return response.json();
+        })
+        .then(function(data) {
+            console.log('📦 Response data:', data);
+            console.log('='.repeat(60) + '\n');
+            
+            if (data.success) {
+                let mensaje = data.message;
+                console.log('✅ Éxito:', mensaje);
+                Swal.fire('¡Éxito!', mensaje, 'success').then(function() {
+                    console.log('🔄 Recargando página...');
+                    location.reload();
+                });
+            } else {
+                console.error('❌ Error:', data.message);
+                Swal.fire('Error', data.message, 'error');
+            }
+        })
+        .catch(function(error) {
+            console.error('❌ Error en fetch:', error);
+            console.log('='.repeat(60) + '\n');
+            Swal.fire('Error', 'Hubo un problema al cambiar el estado: ' + error, 'error');
+        });
+    }
+
+    function toggleAfectaStockModal() {
+        if (!esAdmin) {
+            Swal.fire('Error', 'No tienes permisos para realizar esta acción', 'error');
+            return;
+        }
+        if (!solicitudActual) return;
+        
+        const afectaActual = solicitudActual.afecta_stock !== false;
+        const nuevoValor = !afectaActual;
+        
+        Swal.fire({
+            title: nuevoValor ? '¿Activar afectación de stock?' : '¿Desactivar afectación de stock?',
+            text: nuevoValor ? 'La solicitud volverá a afectar stock normalmente' : 'La solicitud NO afectará stock (órdenes especiales, traslados, etc.)',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, cambiar',
+            cancelButtonText: 'Cancelar'
+        }).then(function(result) {
+            if (result.isConfirmed) {
+                const url = cambiarAfectaStockBaseUrl.replace('0/', solicitudActual.id + '/');
+                
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'afecta_stock=' + nuevoValor
+                })
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (data.success) {
+                        Swal.fire('¡Éxito!', data.message, 'success').then(function() {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire('Error', data.message, 'error');
+                    }
+                });
+            }
+        });
     }
 </script>
 {% endblock %}

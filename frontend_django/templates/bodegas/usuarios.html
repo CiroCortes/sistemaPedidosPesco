@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}Asignación de Bodegas{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Asignación de Bodegas a Usuarios</h1>
+    <a href="{% url 'lista_bodegas' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver a Bodegas
+    </a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Usuario</th>
+                <th>Rol</th>
+                <th>Bodegas Asignadas</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for usuario in usuarios %}
+            <tr>
+                <td>
+                    <strong>{{ usuario.nombre_completo|default:usuario.username }}</strong><br>
+                    <small class="text-muted">{{ usuario.email }}</small>
+                </td>
+                <td>
+                    <span class="badge bg-secondary">{{ usuario.get_rol_display }}</span>
+                </td>
+                <td>
+                    {% for bodega in usuario.bodegas_asignadas.all %}
+                    <span class="badge bg-info text-dark mb-1">{{ bodega.codigo }}</span>
+                    {% empty %}
+                    <span class="text-muted small">Sin bodegas asignadas</span>
+                    {% endfor %}
+                </td>
+                <td>
+                    <a href="{% url 'asignar_bodegas' usuario.id %}" class="btn btn-sm btn-primary">
+                        <i class="bi bi-pencil-square"></i> Asignar
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" class="text-center text-muted py-4">
+                    No hay usuarios registrados (excluyendo administradores).
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

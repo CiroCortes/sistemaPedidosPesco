@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+
+{% block title %}Inventario SAP{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% if total_resultados > 0 %}
+    <!-- Si hay datos cargados -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>📦 Inventario SAP</h1>
+        <span class="badge bg-primary fs-6">Total: {{ total_resultados }} registros</span>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label">Buscar</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" name="q" value="{{ query }}"
+                            placeholder="Código o Descripción del producto...">
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Filtrar por Bodega</label>
+                    <select class="form-select" name="bodega">
+                        <option value="">Todas las bodegas</option>
+                        {% for cod, nombre in bodegas %}
+                        <option value="{{ cod }}" {% if bodega_seleccionada == cod %}selected{% endif %}>
+                            {{ cod }} - {{ nombre }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            Filtrar Resultados
+                        </button>
+                        {% if query or bodega_seleccionada %}
+                        <a href="{% url 'inventario:consultar_stock' %}" class="btn btn-outline-secondary">
+                            Limpiar Filtros
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de Resultados -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0 align-middle">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th style="width: 15%">Código</th>
+                            <th style="width: 35%">Descripción</th>
+                            <th style="width: 15%">Bodega</th>
+                            <th style="width: 15%">Ubicación</th>
+                            <th style="width: 10%" class="text-end">Stock</th>
+                            <th style="width: 10%" class="text-end">Valor Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in page_obj %}
+                        <tr>
+                            <td class="fw-bold text-primary">{{ item.codigo }}</td>
+                            <td>
+                                {{ item.descripcion }}
+                                <br>
+                                <small class="text-muted">{{ item.descripcion_grupo }}</small>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">{{ item.bodega }}</span>
+                                <br>
+                                <small class="text-muted" style="font-size: 0.75rem;">{{
+                                    item.bodega_nombre|truncatechars:20 }}</small>
+                            </td>
+                            <td>
+                                {% if item.ubicacion %}
+                                <i class="bi bi-geo-alt text-secondary"></i> {{ item.ubicacion }}
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if item.stock_disponible > 0 %}
+                                <span class="badge bg-success fs-6">{{ item.stock_disponible }}</span>
+                                {% else %}
+                                <span class="badge bg-danger">0</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end text-muted">
+                                {% if item.total %}
+                                ${{ item.total|floatformat:0 }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center py-5">
+                                <div class="text-muted">
+                                    <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                                    No se encontraron productos con los filtros seleccionados.
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Paginación -->
+        {% if page_obj.has_other_pages %}
+        <div class="card-footer bg-white py-3">
+            <nav aria-label="Navegación de inventario">
+                <ul class="pagination justify-content-center mb-0">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link"
+                            href="?page=1{% if query %}&q={{ query }}{% endif %}{% if bodega_seleccionada %}&bodega={{ bodega_seleccionada }}{% endif %}">&laquo;
+                            Primero</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link"
+                            href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if bodega_seleccionada %}&bodega={{ bodega_seleccionada }}{% endif %}">Anterior</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">&laquo; Primero</span></li>
+                    <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+                    {% endif %}
+
+                    <li class="page-item active">
+                        <span class="page-link">
+                            Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+                        </span>
+                    </li>
+
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link"
+                            href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if bodega_seleccionada %}&bodega={{ bodega_seleccionada }}{% endif %}">Siguiente</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link"
+                            href="?page={{ page_obj.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}{% if bodega_seleccionada %}&bodega={{ bodega_seleccionada }}{% endif %}">Último
+                            &raquo;</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">Siguiente</span></li>
+                    <li class="page-item disabled"><span class="page-link">Último &raquo;</span></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <!-- Si no hay datos cargados aún -->
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-8 text-center">
+            <div class="card shadow-sm">
+                <div class="card-body py-5">
+                    <i class="bi bi-database-x display-1 text-muted mb-4"></i>
+                    <h2 class="mb-3">No hay datos de inventario cargados</h2>
+                    <p class="text-muted mb-4">
+                        Aún no se ha cargado el archivo de stock de SAP. <br>
+                        Para comenzar a consultar el inventario, primero debes cargar el archivo.
+                    </p>
+                    <a href="{% url 'inventario:cargar_stock' %}" class="btn btn-primary btn-lg">
+                        <i class="bi bi-cloud-upload me-2"></i>
+                        Cargar Archivo de Stock
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
