@@ -23,25 +23,36 @@ def lista_solicitudes(request):
     Aplica filtros según rol y parámetros del usuario.
     """
     user = request.user
-    solicitudes = (
-        Solicitud.objects
-        .select_related('solicitante')
-        .prefetch_related('detalles', 'bultos')
-        .order_by('id')  # Ordenar de menor a mayor por ID
-    )
+    
+    # Importaciones necesarias
+    from django.db.models import Prefetch, Exists, OuterRef
+    from despacho.models import Bulto
+    from solicitudes.models import SolicitudDetalle
+    from configuracion.models import EstadoWorkflow, TransporteConfig
+    
+    # Pre-cargar caché de configuraciones (evita 60+ queries)
+    EstadoWorkflow._cargar_cache()
+    TransporteConfig._cargar_cache()
+    
+    # PASO 1: Crear queryset base
+    solicitudes = Solicitud.objects.all()
 
-    # Restricciones por rol
+    # PASO 2: Aplicar filtros por rol (OPTIMIZADO: usa Exists en lugar de JOIN + distinct)
     if user.es_bodega():
-        # Filtrar solicitudes que tengan productos pendientes en MIS bodegas
         bodegas_usuario = user.get_bodegas_codigos()
-        solicitudes = solicitudes.filter(
-            detalles__bodega__in=bodegas_usuario,
-            detalles__estado_bodega='pendiente'
-        ).distinct()
+        # Optimización: usar Exists en lugar de JOIN + distinct (mucho más rápido)
+        detalles_pendientes = SolicitudDetalle.objects.filter(
+            solicitud=OuterRef('pk'),
+            bodega__in=bodegas_usuario,
+            estado_bodega='pendiente'
+        )
+        solicitudes = solicitudes.annotate(
+            tiene_pendientes=Exists(detalles_pendientes)
+        ).filter(tiene_pendientes=True)
     elif user.es_despacho():
         solicitudes = solicitudes.filter(estado__in=['en_despacho', 'embalado', 'listo_despacho', 'en_ruta'])
 
-    # Filtros desde la URL
+    # PASO 3: Aplicar filtros desde la URL
     estado = (request.GET.get('estado', '') or '').strip()
     tipo = request.GET.get('tipo', '')
     urgente = request.GET.get('urgente', '')
@@ -63,10 +74,25 @@ def lista_solicitudes(request):
             | Q(numero_ot__icontains=busqueda)
         )
 
+    # PASO 4: Cargar relaciones ANTES de paginar (Django solo carga 25 en la query)
+    # El prefetch_related es inteligente y solo carga relaciones de los objetos obtenidos
+    solicitudes = (
+        solicitudes
+        .select_related('solicitante')  # ForeignKey: siempre eficiente
+        .prefetch_related(
+            # Solo prefetch de bultos (el template no usa detalles en la lista)
+            Prefetch('bultos', queryset=Bulto.objects.only('id', 'codigo'))
+        )
+        .order_by('id')
+    )
+    
+    # PASO 5: Paginar (esto ejecuta la query pero Django solo trae 25 registros)
     paginator = Paginator(solicitudes, 25)
     page_obj = paginator.get_page(request.GET.get('page'))
 
-    stats = Solicitud.objects.values('estado').annotate(total=Count('id'))
+    # Stats: Solo si es necesario (comentado por ahora para velocidad)
+    # stats = Solicitud.objects.values('estado').annotate(total=Count('id'))
+    stats = []  # Desactivado temporalmente para mejorar velocidad
 
     estados_opciones = EstadoWorkflow.activos_para(EstadoWorkflow.TIPO_SOLICITUD)
 

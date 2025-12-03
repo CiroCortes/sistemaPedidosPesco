@@ -112,7 +112,13 @@ DATABASES = {
         'PORT': os.getenv('DB_PORT', '5432'),
         'OPTIONS': {
             'sslmode': 'require',  # Supabase requiere SSL
+            'connect_timeout': 10,  # Timeout de 10 segundos
+            'keepalives': 1,  # Mantener conexión viva
+            'keepalives_idle': 30,  # Segundos antes de keepalive
+            'keepalives_interval': 10,  # Intervalo entre keepalives
+            'keepalives_count': 5,  # Intentos antes de fallar
         },
+        'CONN_MAX_AGE': 0,  # No reutilizar conexiones (más estable con cambios de red)
     }
 }
 

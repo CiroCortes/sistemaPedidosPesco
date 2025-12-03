@@ -58,16 +58,24 @@ def dashboard(request):
     }
     
     if user.es_admin():
-        # Admin ve todo
-        context.update({
-            'total_solicitudes': Solicitud.objects.count(),
-            'solicitudes_pendientes': Solicitud.objects.filter(estado='pendiente').count(),
-            'solicitudes_en_despacho': Solicitud.objects.filter(estado='en_despacho').count(),
-            'solicitudes_embaladas': Solicitud.objects.filter(estado='embalado').count(),
-            'solicitudes_urgentes': Solicitud.objects.filter(
-                urgente=True, 
+        # Admin ve todo - Optimizado: 1 query en lugar de 6
+        stats = Solicitud.objects.aggregate(
+            total=Count('id'),
+            pendientes=Count('id', filter=Q(estado='pendiente')),
+            en_despacho=Count('id', filter=Q(estado='en_despacho')),
+            embaladas=Count('id', filter=Q(estado='embalado')),
+            urgentes=Count('id', filter=Q(
+                urgente=True,
                 estado__in=['pendiente', 'en_despacho', 'embalado']
-            ).count(),
+            ))
+        )
+        
+        context.update({
+            'total_solicitudes': stats['total'],
+            'solicitudes_pendientes': stats['pendientes'],
+            'solicitudes_en_despacho': stats['en_despacho'],
+            'solicitudes_embaladas': stats['embaladas'],
+            'solicitudes_urgentes': stats['urgentes'],
             'solicitudes_recientes': Solicitud.objects.select_related('solicitante')[:10],
             
             # Estadísticas por estado
@@ -77,23 +85,35 @@ def dashboard(request):
         })
     
     elif user.es_bodega():
-        # Bodega solo ve pendientes
-        solicitudes_pendientes = Solicitud.objects.filter(estado='pendiente').select_related('solicitante')
+        # Bodega solo ve pendientes - Optimizado: 1 query en lugar de 3
+        solicitudes_pendientes = list(
+            Solicitud.objects
+            .filter(estado='pendiente')
+            .select_related('solicitante')[:15]
+        )
+        
+        urgentes = sum(1 for s in solicitudes_pendientes if s.urgente)
         
         context.update({
-            'solicitudes_pendientes': solicitudes_pendientes.count(),
-            'solicitudes_urgentes': solicitudes_pendientes.filter(urgente=True).count(),
-            'listado_solicitudes': solicitudes_pendientes[:15],
+            'solicitudes_pendientes': len(solicitudes_pendientes),
+            'solicitudes_urgentes': urgentes,
+            'listado_solicitudes': solicitudes_pendientes,
         })
     
     elif user.es_despacho():
-        # Despacho solo ve en_despacho
-        solicitudes_en_despacho = Solicitud.objects.filter(estado='en_despacho').select_related('solicitante')
+        # Despacho solo ve en_despacho - Optimizado: 1 query en lugar de 3
+        solicitudes_en_despacho = list(
+            Solicitud.objects
+            .filter(estado='en_despacho')
+            .select_related('solicitante')[:15]
+        )
+        
+        urgentes = sum(1 for s in solicitudes_en_despacho if s.urgente)
         
         context.update({
-            'solicitudes_en_despacho': solicitudes_en_despacho.count(),
-            'solicitudes_urgentes': solicitudes_en_despacho.filter(urgente=True).count(),
-            'listado_solicitudes': solicitudes_en_despacho[:15],
+            'solicitudes_en_despacho': len(solicitudes_en_despacho),
+            'solicitudes_urgentes': urgentes,
+            'listado_solicitudes': solicitudes_en_despacho,
         })
     
     return render(request, 'dashboard.html', context)

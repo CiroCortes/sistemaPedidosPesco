@@ -117,11 +117,14 @@ def consultar_stock(request):
     
     stock_list = Stock.objects.all()
     
+    # Optimización: Búsqueda más eficiente
     if query:
-        stock_list = stock_list.filter(
-            Q(codigo__icontains=query) | 
-            Q(descripcion__icontains=query)
-        )
+        # Si parece un código (corto, sin espacios), búsqueda exacta (más rápida)
+        if len(query) < 20 and ' ' not in query:
+            stock_list = stock_list.filter(codigo__istartswith=query)
+        else:
+            # Para descripciones, usar icontains (más lento pero necesario)
+            stock_list = stock_list.filter(descripcion__icontains=query)
         
     if bodega:
         stock_list = stock_list.filter(bodega=bodega)

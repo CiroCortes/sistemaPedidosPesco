@@ -31,11 +31,19 @@ def gestion_despacho(request):
 
     estados_consulta = estados_todos if estado_filtro == 'todas' else estados_pendientes
 
+    # Optimización: Prefetch con select_related para evitar queries N+1
+    from django.db.models import Prefetch
+    
     solicitudes = (
         Solicitud.objects
         .filter(estado__in=estados_consulta)
         .select_related('solicitante')
-        .prefetch_related('detalles')
+        .prefetch_related(
+            Prefetch(
+                'detalles',
+                queryset=SolicitudDetalle.objects.select_related('bulto')
+            )
+        )
         .order_by('fecha_solicitud', 'id')
     )
 
@@ -53,6 +61,9 @@ def gestion_despacho(request):
 
     form = BultoForm()
 
+    # Optimización: Evaluar queryset una sola vez para evitar múltiples queries
+    solicitudes = list(solicitudes)
+    
     codigos = set()
     for solicitud in solicitudes:
         for d in solicitud.detalles.all():
