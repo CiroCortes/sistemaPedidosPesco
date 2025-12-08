@@ -13,7 +13,8 @@ from configuracion.models import TransporteConfig
 from solicitudes.models import Solicitud, SolicitudDetalle
 from bodega.models import Stock
 from .forms import BultoForm, BultoEstadoForm
-from .models import Bulto, BultoSolicitud
+from .models import Bulto
+# BultoSolicitud eliminado - ahora se usa ForeignKey directo
 
 
 @login_required
@@ -110,8 +111,7 @@ def gestion_despacho(request):
 
     bultos = (
         Bulto.objects
-        .select_related('creado_por')
-        .prefetch_related('solicitudes')
+        .select_related('creado_por', 'solicitud')
         .order_by('-fecha_creacion')[:50]
     )
 
@@ -188,15 +188,14 @@ def crear_bulto(request):
             bulto = form.save(commit=False)
             bulto.creado_por = request.user
             bulto.estado = 'embalado'
+            # Asignar la solicitud ANTES de guardar (campo obligatorio NOT NULL)
+            bulto.solicitud = solicitud_unica
             bulto.save()
 
             # Asignar bulto a todos los detalles
             for detalle in detalles:
                 detalle.bulto = bulto
                 detalle.save(update_fields=['bulto'])
-
-            # Crear la relación bulto-solicitud (una sola relación)
-            BultoSolicitud.objects.get_or_create(bulto=bulto, solicitud=solicitud_unica)
             
             # Si todos los detalles de la solicitud están en bultos, cambiar estado
             if not solicitud_unica.detalles.filter(bulto__isnull=True).exists():
@@ -215,12 +214,12 @@ def crear_bulto(request):
 @login_required
 @role_required(['admin', 'despacho'])
 def detalle_bulto(request, pk):
-    bulto = get_object_or_404(Bulto.objects.select_related('creado_por'), pk=pk)
+    bulto = get_object_or_404(Bulto.objects.select_related('creado_por', 'solicitud'), pk=pk)
     detalles = bulto.detalles.select_related('solicitud')
     form = BultoEstadoForm(instance=bulto)
 
     # Obtener información de numeración de bultos (ej: 1-1, 1-2, 2-2)
-    solicitud = bulto.solicitudes.first()
+    solicitud = bulto.solicitud
     numero_bulto = None
     total_bultos = None
     
@@ -274,8 +273,8 @@ def actualizar_estado_bulto(request, pk):
         bulto.fecha_embalaje = timezone.now()
         bulto.save(update_fields=['fecha_embalaje'])
 
-    # Un bulto solo puede tener una solicitud
-    solicitud = bulto.solicitudes.first()
+    # Un bulto solo puede tener una solicitud (ahora es ForeignKey directo)
+    solicitud = bulto.solicitud
     
     if solicitud:
         if bulto.estado == 'finalizado':

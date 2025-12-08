@@ -156,7 +156,7 @@
                     <td>{{ bulto.codigo }}</td>
                     <td><span class="badge bg-secondary">{{ bulto.get_estado_display }}</span></td>
                     <td>{{ bulto.get_transportista_display }}</td>
-                    <td>{{ bulto.solicitudes.count }}</td>
+                    <td>{% if bulto.solicitud %}#{{ bulto.solicitud.id }}{% else %}-{% endif %}</td>
                     <td>{{ bulto.detalles.count }}</td>
                     <td>{{ bulto.fecha_creacion|date:"d/m/Y H:i" }}</td>
                     <td><a class="btn btn-sm btn-outline-primary" href="{% url 'despacho:detalle_bulto' bulto.id %}"><i class="bi bi-box-arrow-up-right"></i></a></td>

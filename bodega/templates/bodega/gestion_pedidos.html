@@ -262,15 +262,25 @@
                 // Determinar bodega seleccionada inicialmente (solo de las permitidas)
                 let bodegaSeleccionada = null;
                 if (stockPermitido.length > 0) {
-                    bodegaSeleccionada = stockPermitido.find(item => 
-                        item.bodega === (detalle.bodega_sugerida || item.bodega)
-                    ) || stockPermitido[0];
+                    // Buscar la bodega sugerida si existe, sino usar la primera
+                    if (detalle.bodega_sugerida) {
+                        bodegaSeleccionada = stockPermitido.find(item => 
+                            item.bodega === detalle.bodega_sugerida
+                        );
+                    }
+                    // Si no se encontró la sugerida o no hay sugerida, usar la primera
+                    if (!bodegaSeleccionada) {
+                        bodegaSeleccionada = stockPermitido[0];
+                    }
                 }
                 
                 const selectBodega = stockPermitido.length > 0
                     ? `<select class="form-select form-select-sm selector-bodega" data-detalle="${detalle.id}">
-                        ${stockPermitido.map(item => {
-                            const selected = item.bodega === (detalle.bodega_sugerida || item.bodega) ? 'selected' : '';
+                        ${stockPermitido.map((item, index) => {
+                            // Seleccionar solo si coincide con la bodega sugerida (y existe) o es la primera si no hay sugerida
+                            const isSelected = (detalle.bodega_sugerida && item.bodega === detalle.bodega_sugerida) ||
+                                              (!detalle.bodega_sugerida && index === 0);
+                            const selected = isSelected ? 'selected' : '';
                             const ubicacion = (item.ubicacion || '').replace(/"/g, '&quot;');
                             const ubicacion2 = (item.ubicacion_2 || '').replace(/"/g, '&quot;');
                             // Solo mostrar código de bodega, SIN stock

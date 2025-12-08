@@ -50,10 +50,11 @@ class Bulto(models.Model):
         null=True,
         related_name='bultos_creados'
     )
-    solicitudes = models.ManyToManyField(
+    solicitud = models.ForeignKey(
         Solicitud,
-        through='BultoSolicitud',
-        related_name='bultos'
+        on_delete=models.CASCADE,
+        related_name='bultos',
+        verbose_name='Solicitud'
     )
 
     class Meta:
@@ -103,19 +104,22 @@ class Bulto(models.Model):
         return TransporteConfig.etiqueta(self.transportista)
 
 
-class BultoSolicitud(models.Model):
-    """
-    Vincula un bulto con una solicitud.
-    """
-
-    bulto = models.ForeignKey(Bulto, on_delete=models.CASCADE, related_name='relaciones')
-    solicitud = models.ForeignKey(Solicitud, on_delete=models.CASCADE, related_name='relaciones_bulto')
-    comentario = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = 'despacho_bulto_solicitudes'
-        ordering = ['id']
-
-    def __str__(self):
-        return f"{self.bulto.codigo} → Solicitud #{self.solicitud_id}"
+# Modelo eliminado: BultoSolicitud ya no es necesario.
+# La relación ahora es directa mediante ForeignKey en Bulto.solicitud
+# Esto asegura la integridad referencial y evita relaciones múltiples
+# 
+# class BultoSolicitud(models.Model):
+#     """
+#     Vincula un bulto con una solicitud.
+#     """
+#     bulto = models.ForeignKey(Bulto, on_delete=models.CASCADE, related_name='relaciones')
+#     solicitud = models.ForeignKey(Solicitud, on_delete=models.CASCADE, related_name='relaciones_bulto')
+#     comentario = models.TextField(blank=True)
+#     created_at = models.DateTimeField(auto_now_add=True)
+# 
+#     class Meta:
+#         db_table = 'despacho_bulto_solicitudes'
+#         ordering = ['id']
+# 
+#     def __str__(self):
+#         return f"{self.bulto.codigo} → Solicitud #{self.solicitud_id}"
