@@ -6,13 +6,22 @@
 <div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
     <div>
         <h1 class="h3 mb-0">Bulto {{ bulto.codigo }}</h1>
-        <p class="text-muted mb-0">Estado actual:
+        <p class="text-muted mb-0">
+            Estado actual:
             <span class="badge bg-{{ bulto.color_estado }}">{{ bulto.get_estado_display }}</span>
+            {% if numero_bulto and total_bultos %}
+                <span class="ms-2">Bulto {{ numero_bulto }}-{{ total_bultos }}</span>
+            {% endif %}
         </p>
     </div>
-    <a href="{% url 'despacho:gestion' %}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left"></i> Volver
-    </a>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary" id="btnImprimirEtiqueta">
+            <i class="bi bi-printer me-1"></i> Imprimir Etiqueta
+        </button>
+        <a href="{% url 'despacho:gestion' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Volver
+        </a>
+    </div>
 </div>
 
 <div class="row">
@@ -186,6 +195,269 @@
                 btnEstado.disabled = false;
             });
     });
+
+    // Función para generar e imprimir etiqueta de bulto
+    function generarEtiquetaBulto() {
+        try {
+            const bultoCodigo = '{{ bulto.codigo|escapejs }}';
+            const solicitudId = {% if solicitud %}{{ solicitud.id }}{% else %}null{% endif %};
+            const numeroBulto = {% if numero_bulto %}{{ numero_bulto }}{% else %}null{% endif %};
+            const totalBultos = {% if total_bultos %}{{ total_bultos }}{% else %}null{% endif %};
+            const cliente = {% if solicitud %}'{{ solicitud.cliente|escapejs }}'{% else %}'-'{% endif %};
+            const peso = parseFloat('{{ bulto.peso_total|default:"0" }}') || 0;
+            const largo = parseFloat('{{ bulto.largo_cm|default:"0" }}') || 0;
+            const ancho = parseFloat('{{ bulto.ancho_cm|default:"0" }}') || 0;
+            const alto = parseFloat('{{ bulto.alto_cm|default:"0" }}') || 0;
+            const medidas = `${largo} x ${ancho} x ${alto} cm`;
+            const tipo = '{{ bulto.get_tipo_display|escapejs }}';
+            const transportista = '{{ bulto.get_transportista_display|escapejs }}';
+            
+            // Formatear número de bulto
+            const numeroFormato = numeroBulto && totalBultos ? `${numeroBulto}-${totalBultos}` : '-';
+            
+            // Fecha actual
+            const now = new Date();
+            const fecha = now.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            
+            // Generar HTML de la etiqueta (10cm x 20cm = 100mm x 200mm)
+            const htmlEtiqueta = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Etiqueta Bulto - ${bultoCodigo}</title>
+    <style>
+        @media print {
+            @page {
+                size: 100mm 200mm;
+                margin: 5mm;
+            }
+            .no-print { display: none !important; }
+            body { margin: 0; padding: 0; }
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            width: 100mm;
+            height: 200mm;
+            padding: 5mm;
+            border: 2px solid #000;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            border-bottom: 3px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 20pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+        }
+        
+        .header .codigo-bulto {
+            font-size: 24pt;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            color: #000;
+            letter-spacing: 2px;
+        }
+        
+        .numero-bulto {
+            font-size: 32pt;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+            padding: 8px;
+            background-color: #f0f0f0;
+            border: 2px solid #000;
+        }
+        
+        .info-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .info-row {
+            margin: 6px 0;
+            font-size: 11pt;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            display: inline-block;
+            min-width: 60px;
+        }
+        
+        .info-value {
+            font-size: 12pt;
+        }
+        
+        .solicitud-info {
+            background-color: #f9f9f9;
+            padding: 8px;
+            border: 1px solid #666;
+            margin: 8px 0;
+            text-align: center;
+        }
+        
+        .solicitud-info .label {
+            font-size: 9pt;
+            color: #666;
+        }
+        
+        .solicitud-info .value {
+            font-size: 16pt;
+            font-weight: bold;
+        }
+        
+        .medidas-section {
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+            padding: 8px 0;
+            margin: 10px 0;
+            text-align: center;
+        }
+        
+        .medidas-section .medidas {
+            font-size: 14pt;
+            font-weight: bold;
+        }
+        
+        .footer {
+            border-top: 2px solid #000;
+            padding-top: 8px;
+            margin-top: auto;
+            text-align: center;
+            font-size: 9pt;
+        }
+        
+        .barcode-area {
+            text-align: center;
+            margin: 10px 0;
+            padding: 5px;
+            border: 1px dashed #999;
+            min-height: 40px;
+        }
+        
+        .no-print {
+            text-align: center;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        .no-print button {
+            padding: 10px 20px;
+            font-size: 14pt;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <h2>Etiqueta de Bulto - Vista Previa</h2>
+        <p>Tamaño: 10cm x 20cm</p>
+        <button onclick="window.print()">🖨️ Imprimir</button>
+        <button onclick="window.close()">Cerrar</button>
+    </div>
+    
+    <div class="header">
+        <h1>PESCO</h1>
+        <div class="codigo-bulto">${bultoCodigo}</div>
+    </div>
+    
+    <div class="numero-bulto">
+        ${numeroFormato}
+    </div>
+    
+    <div class="solicitud-info">
+        <div class="label">Solicitud N°</div>
+        <div class="value">#${solicitudId || '-'}</div>
+    </div>
+    
+    <div class="info-section">
+        <div>
+            <div class="info-row">
+                <span class="info-label">Cliente:</span>
+                <span class="info-value">${cliente || '-'}</span>
+            </div>
+            
+            <div class="info-row">
+                <span class="info-label">Tipo:</span>
+                <span class="info-value">${tipo}</span>
+            </div>
+            
+            <div class="medidas-section">
+                <div style="font-size: 10pt; color: #666; margin-bottom: 3px;">Medidas</div>
+                <div class="medidas">${medidas}</div>
+            </div>
+            
+            <div class="info-row">
+                <span class="info-label">Peso:</span>
+                <span class="info-value">${peso} kg</span>
+            </div>
+            
+            <div class="info-row">
+                <span class="info-label">Transporte:</span>
+                <span class="info-value">${transportista}</span>
+            </div>
+        </div>
+        
+        <div class="barcode-area">
+            <div style="font-size: 8pt; color: #999; margin-bottom: 5px;">Código de Barras</div>
+            <div style="font-family: 'Courier New', monospace; font-size: 10pt;">${bultoCodigo}</div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <div style="font-weight: bold; margin-bottom: 3px;">${fecha}</div>
+        <div style="font-size: 8pt; color: #666;">Sistema PESCO - Gestión de Despacho</div>
+    </div>
+</body>
+</html>
+            `;
+            
+            // Abrir ventana de impresión
+            const ventanaImpresion = window.open('', '_blank', 'width=400,height=800');
+            ventanaImpresion.document.write(htmlEtiqueta);
+            ventanaImpresion.document.close();
+            
+            // Esperar a que cargue y luego mostrar opción de imprimir
+            ventanaImpresion.onload = function() {
+                setTimeout(() => {
+                    ventanaImpresion.focus();
+                }, 500);
+            };
+        } catch (error) {
+            console.error('Error al generar etiqueta:', error);
+            alert('Error al generar la etiqueta. Por favor, contacta al administrador.');
+        }
+    }
+    
+    // Listener para el botón de imprimir etiqueta
+    const btnImprimirEtiqueta = document.getElementById('btnImprimirEtiqueta');
+    if (btnImprimirEtiqueta) {
+        btnImprimirEtiqueta.addEventListener('click', generarEtiquetaBulto);
+    }
 </script>
 {% endblock %}
 

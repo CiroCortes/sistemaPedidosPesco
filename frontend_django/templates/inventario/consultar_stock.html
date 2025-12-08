@@ -78,9 +78,10 @@
                             </td>
                             <td>
                                 <span class="badge bg-light text-dark border">{{ item.bodega }}</span>
+                                {% if item.bodega_nombre %}
                                 <br>
-                                <small class="text-muted" style="font-size: 0.75rem;">{{
-                                    item.bodega_nombre|truncatechars:20 }}</small>
+                                <small class="text-muted" style="font-size: 0.75rem;">{{ item.bodega_nombre|truncatechars:20 }}</small>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if item.ubicacion %}

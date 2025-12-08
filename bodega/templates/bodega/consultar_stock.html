@@ -70,7 +70,11 @@
                             </td>
                             <td>
                                 <span class="badge bg-light text-dark border">{{ item.bodega }}</span>
-                                <br><small class="text-muted">{{ item.bodega_nombre|truncatechars:20 }}</small>
+                                {% with nombre_bodega=item.bodega_nombre|default:"" %}
+                                    {% if nombre_bodega %}
+                                    <br><small class="text-muted">{{ nombre_bodega|truncatechars:20 }}</small>
+                                    {% endif %}
+                                {% endwith %}
                             </td>
                             <td>{{ item.ubicacion|default:"-" }}</td>
                             <td class="text-center fw-bold fs-5">

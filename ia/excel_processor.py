@@ -118,7 +118,7 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
     """
     Busca las descripciones y bodegas de los códigos en la tabla Stock.
     SIEMPRE busca en Stock, incluso si ya tiene descripción.
-    Asigna la bodega con más stock automáticamente.
+    Asigna la bodega según orden de prioridad fijo (013-03, 013-01, 013-09, 013-pp, 013-05, 013-08, 013-PS).
     
     Args:
         productos: Lista de productos a enriquecer
@@ -130,6 +130,7 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
     try:
         from bodega.models import Stock
         from core.models import Bodega
+        from django.db.models import Sum
         
         # Obtener TODOS los códigos únicos de los productos
         todos_codigos = list(set(p['codigo'] for p in productos))
@@ -142,24 +143,34 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
         # Obtener bodegas activas del sistema
         bodegas_activas = list(Bodega.objects.filter(activa=True).values_list('codigo', flat=True))
         
+        # Logging de diagnóstico
+        print(f"   📦 Bodegas activas en sistema: {', '.join(bodegas_activas) if bodegas_activas else 'NINGUNA'}")
+        print(f"   🔍 Códigos a buscar: {', '.join(todos_codigos)}")
+        print(f"   📊 Registros encontrados en Stock: {stock_items.count()}")
+        
+        # Normalizar bodegas activas para comparación (sin espacios, mayúsculas)
+        bodegas_activas_normalizadas = {b.strip().upper() for b in bodegas_activas}
+        
         # Mapas para búsqueda rápida
         descripciones_map = {}
         bodegas_disponibles_map = {}  # codigo -> lista de bodegas con stock
         
         for item in stock_items:
             codigo = item['codigo']
+            bodega_item = item['bodega']
             
             # Mapa de descripciones (tomar la primera que encuentre no vacía)
             if codigo not in descripciones_map and item['descripcion']:
                 descripciones_map[codigo] = item['descripcion']
             
             # Mapa de bodegas con stock (solo bodegas activas)
-            if item['stock_disponible'] > 0 and item['bodega'] in bodegas_activas:
+            # Normalizar para comparación
+            if item['stock_disponible'] > 0 and bodega_item.strip().upper() in bodegas_activas_normalizadas:
                 if codigo not in bodegas_disponibles_map:
                     bodegas_disponibles_map[codigo] = []
                 bodegas_disponibles_map[codigo].append({
-                    'bodega': item['bodega'],
-                    'nombre': item['bodega_nombre'] or item['bodega'],
+                    'bodega': bodega_item,  # Mantener formato original de la BD
+                    'nombre': item['bodega_nombre'] or bodega_item,
                     'stock': item['stock_disponible']
                 })
         
@@ -176,25 +187,63 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
             # 2. Asignar Bodega SIEMPRE si no viene especificada
             if 'bodega' not in producto or not producto.get('bodega'):
                 if codigo in bodegas_disponibles_map:
-                    # Lógica de asignación: Priorizar bodega con más stock
+                    # Orden de prioridad para asignación de bodegas
+                    PRIORIDAD_BODEGAS = ['013-03', '013-01', '013-09', '013-pp', '013-05', '013-08', '013-PS']
+                    
                     bodegas = bodegas_disponibles_map[codigo]
-                    bodegas.sort(key=lambda x: x['stock'], reverse=True)
+                    bodega_asignada = None
                     
-                    # Asignar la bodega con más stock
-                    producto['bodega'] = bodegas[0]['bodega']
-                    producto['_bodega_auto'] = True
-                    producto['_stock_disponible'] = bodegas[0]['stock']
-                    producto['_bodega_nombre'] = bodegas[0]['nombre']
+                    # Buscar primera bodega en orden de prioridad que tenga stock
+                    # Normalizar comparaciones para evitar problemas de mayúsculas/minúsculas
+                    for bodega_prioridad in PRIORIDAD_BODEGAS:
+                        bodega_encontrada = next(
+                            (b for b in bodegas if b['bodega'].strip().upper() == bodega_prioridad.strip().upper()),
+                            None
+                        )
+                        if bodega_encontrada:
+                            bodega_asignada = bodega_encontrada
+                            break
                     
-                    # Guardar todas las bodegas disponibles (para logging/debug)
-                    producto['_bodegas_alternativas'] = [
-                        f"{b['bodega']} ({b['stock']} unids)" for b in bodegas
-                    ]
+                    if bodega_asignada:
+                        # Asignar la bodega encontrada según prioridad
+                        producto['bodega'] = bodega_asignada['bodega']
+                        producto['_bodega_auto'] = True
+                        producto['_stock_disponible'] = bodega_asignada['stock']
+                        producto['_bodega_nombre'] = bodega_asignada['nombre']
+                        
+                        # Guardar todas las bodegas disponibles (para logging/debug)
+                        producto['_bodegas_alternativas'] = [
+                            f"{b['bodega']} ({b['stock']} unids)" for b in bodegas
+                        ]
+                    else:
+                        # Si ninguna bodega de prioridad tiene stock, dejar vacío
+                        # El admin deberá revisar y asignar manualmente o eliminar estas líneas
+                        producto['bodega'] = ''
+                        producto['_sin_stock'] = True
+                        
+                        # Guardar información de debug sobre bodegas disponibles fuera de prioridad
+                        if bodegas:
+                            producto['_bodegas_alternativas'] = [
+                                f"{b['bodega']} ({b['stock']} unids)" for b in bodegas
+                            ]
+                            bodegas_fuera_prioridad = [b['bodega'] for b in bodegas]
+                            print(f"   ⚠️  {codigo}: Sin stock en bodegas de prioridad. Bodegas disponibles (fuera de prioridad): {', '.join(bodegas_fuera_prioridad)}")
+                        else:
+                            producto['_bodegas_alternativas'] = []
                 else:
                     # Si no hay stock en ninguna bodega, dejar vacío
                     # El sistema lo tratará como orden especial
                     producto['bodega'] = ''
                     producto['_sin_stock'] = True
+                    # Logging de diagnóstico
+                    stock_total = Stock.objects.filter(codigo=codigo).aggregate(
+                        total=Sum('stock_disponible')
+                    )['total'] or 0
+                    bodegas_con_stock = list(Stock.objects.filter(
+                        codigo=codigo,
+                        stock_disponible__gt=0
+                    ).values_list('bodega', flat=True).distinct())
+                    print(f"   ⚠️  {codigo}: Sin stock en bodegas activas. Stock total en BD: {stock_total}, Bodegas con stock: {', '.join(bodegas_con_stock) if bodegas_con_stock else 'NINGUNA'}")
         
         return productos
         

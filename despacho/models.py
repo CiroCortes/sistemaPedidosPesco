@@ -8,7 +8,8 @@ from configuracion.models import EstadoWorkflow, TransporteConfig
 
 class Bulto(models.Model):
     """
-    Representa un bulto físico (caja/pallet) que agrupa múltiples solicitudes.
+    Representa un bulto físico (caja/pallet) asociado a una sola solicitud.
+    Una solicitud puede tener múltiples bultos, pero un bulto solo pertenece a una solicitud.
     """
 
     TIPOS = [

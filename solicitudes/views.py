@@ -434,9 +434,10 @@ def editar_solicitud(request, pk):
 def cambiar_estado_solicitud(request, pk):
     """
     Permite al admin cambiar el estado de una solicitud.
-    Si el nuevo estado es 'despachado', descuenta el stock.
+    Si el nuevo estado es 'despachado', actualiza bultos asociados y descuenta el stock.
     """
     from .services import descontar_stock_despachado
+    from django.utils import timezone
     import logging
     
     logger = logging.getLogger(__name__)
@@ -480,9 +481,26 @@ def cambiar_estado_solicitud(request, pk):
     else:
         solicitud.save(update_fields=['estado'])
     
-    # Si el nuevo estado es despachado, descontar stock
+    # Si el nuevo estado es despachado, actualizar bultos asociados y descontar stock
     resultado_descuento = None
+    bultos_actualizados = 0
+    
     if nuevo_estado == 'despachado' and estado_anterior != 'despachado':
+        # Actualizar todos los bultos asociados a esta solicitud a 'finalizado'
+        # El estado 'finalizado' indica que el bulto está completamente cerrado
+        from despacho.models import Bulto
+        bultos_asociados = solicitud.bultos.all()
+        for bulto in bultos_asociados:
+            if bulto.estado != 'finalizado':
+                bulto.estado = 'finalizado'
+                # Si no tiene fecha_entrega, establecerla ahora
+                if not bulto.fecha_entrega:
+                    bulto.fecha_entrega = timezone.now()
+                bulto.save(update_fields=['estado', 'fecha_entrega'])
+                bultos_actualizados += 1
+                logger.info(f"Bulto {bulto.codigo} actualizado a 'finalizado' por solicitud #{solicitud.id}")
+        
+        # Descontar stock
         logger.info(f"Ejecutando descuento de stock para solicitud #{solicitud.id}")
         resultado_descuento = descontar_stock_despachado(solicitud)
         logger.info(f"Resultado descuento: {resultado_descuento}")
@@ -501,13 +519,16 @@ def cambiar_estado_solicitud(request, pk):
     mensaje = f'Estado cambiado a {solicitud.get_estado_display()}'
     if numero_guia_despacho:
         mensaje += f' (Guía/Factura: {numero_guia_despacho})'
+    if bultos_actualizados > 0:
+        mensaje += f'. {bultos_actualizados} bulto(s) actualizado(s) a finalizado.'
     if resultado_descuento and resultado_descuento['descontados'] > 0:
-        mensaje += f'. Se descontaron {resultado_descuento["descontados"]} productos de bodega 013.'
+        mensaje += f' Se descontaron {resultado_descuento["descontados"]} productos de bodega 013.'
     elif nuevo_estado == 'despachado' and not resultado_descuento:
         mensaje += ' (Ya estaba despachada, sin cambios en stock)'
     
     print(f"\n✅ CAMBIO EXITOSO:")
     print(f"   Estado: {estado_anterior} → {nuevo_estado}")
+    print(f"   Bultos actualizados: {bultos_actualizados}")
     print(f"   Mensaje: {mensaje}")
     print(f"{'='*60}\n")
     

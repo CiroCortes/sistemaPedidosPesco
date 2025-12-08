@@ -168,6 +168,21 @@ def crear_bulto(request):
         messages.error(request, f'Estos productos no han sido preparados por bodega: {mensajes}')
         return redirect('despacho:gestion')
 
+    # Validar que todos los detalles pertenezcan a la misma solicitud
+    # Un bulto solo puede estar asociado a una solicitud
+    solicitudes_detalles = {detalle.solicitud_id for detalle in detalles}
+    if len(solicitudes_detalles) > 1:
+        solicitudes_ids = ', '.join(f'#{sid}' for sid in sorted(list(solicitudes_detalles))[:3])
+        messages.error(
+            request,
+            f'Un bulto solo puede contener productos de una sola solicitud. '
+            f'Solicitudes detectadas: {solicitudes_ids}'
+        )
+        return redirect('despacho:gestion')
+
+    # Obtener la única solicitud
+    solicitud_unica = detalles[0].solicitud
+
     if form.is_valid():
         with transaction.atomic():
             bulto = form.save(commit=False)
@@ -175,18 +190,18 @@ def crear_bulto(request):
             bulto.estado = 'embalado'
             bulto.save()
 
-            solicitudes_afectadas = set()
-
+            # Asignar bulto a todos los detalles
             for detalle in detalles:
                 detalle.bulto = bulto
                 detalle.save(update_fields=['bulto'])
-                solicitudes_afectadas.add(detalle.solicitud)
 
-            for solicitud in solicitudes_afectadas:
-                BultoSolicitud.objects.get_or_create(bulto=bulto, solicitud=solicitud)
-                if not solicitud.detalles.filter(bulto__isnull=True).exists():
-                    solicitud.estado = 'listo_despacho'
-                    solicitud.save(update_fields=['estado'])
+            # Crear la relación bulto-solicitud (una sola relación)
+            BultoSolicitud.objects.get_or_create(bulto=bulto, solicitud=solicitud_unica)
+            
+            # Si todos los detalles de la solicitud están en bultos, cambiar estado
+            if not solicitud_unica.detalles.filter(bulto__isnull=True).exists():
+                solicitud_unica.estado = 'listo_despacho'
+                solicitud_unica.save(update_fields=['estado'])
 
             mensaje = f'Bulto {bulto.codigo} creado con {len(detalles)} códigos.'
             messages.success(request, mensaje)
@@ -204,11 +219,33 @@ def detalle_bulto(request, pk):
     detalles = bulto.detalles.select_related('solicitud')
     form = BultoEstadoForm(instance=bulto)
 
-    return render(request, 'despacho/detalle_bulto.html', {
+    # Obtener información de numeración de bultos (ej: 1-1, 1-2, 2-2)
+    solicitud = bulto.solicitudes.first()
+    numero_bulto = None
+    total_bultos = None
+    
+    if solicitud:
+        # Obtener todos los bultos de esta solicitud ordenados por fecha de creación
+        bultos_solicitud = solicitud.bultos.all().order_by('fecha_creacion')
+        total_bultos = bultos_solicitud.count()
+        
+        # Encontrar el índice de este bulto (1-based)
+        for idx, b in enumerate(bultos_solicitud, 1):
+            if b.id == bulto.id:
+                numero_bulto = idx
+                break
+
+    # Asegurar que siempre tengamos valores por defecto
+    context = {
         'bulto': bulto,
         'detalles': detalles,
         'estado_form': form,
-    })
+        'solicitud': solicitud,
+        'numero_bulto': numero_bulto or None,
+        'total_bultos': total_bultos or None,
+    }
+    
+    return render(request, 'despacho/detalle_bulto.html', context)
 
 
 @login_required
@@ -217,6 +254,14 @@ def actualizar_estado_bulto(request, pk):
     bulto = get_object_or_404(Bulto, pk=pk)
     if request.method != 'POST':
         return JsonResponse({'success': False, 'message': 'Método no permitido'}, status=405)
+
+    # Validar que solo admin puede marcar bultos como 'finalizado' manualmente
+    nuevo_estado = request.POST.get('estado')
+    if nuevo_estado == 'finalizado' and not request.user.es_admin():
+        return JsonResponse({
+            'success': False,
+            'message': 'Solo el administrador puede finalizar bultos manualmente.'
+        }, status=403)
 
     form = BultoEstadoForm(request.POST, instance=bulto)
     if not form.is_valid():
@@ -229,23 +274,36 @@ def actualizar_estado_bulto(request, pk):
         bulto.fecha_embalaje = timezone.now()
         bulto.save(update_fields=['fecha_embalaje'])
 
-    if bulto.estado == 'entregado':
-        bulto.fecha_entrega = bulto.fecha_entrega or timezone.now()
-        bulto.save(update_fields=['fecha_entrega'])
-        for solicitud in bulto.solicitudes.all():
+    # Un bulto solo puede tener una solicitud
+    solicitud = bulto.solicitudes.first()
+    
+    if solicitud:
+        if bulto.estado == 'finalizado':
+            # Estado terminal: cuando un bulto se marca como finalizado,
+            # la solicitud debe estar en 'despachado' (estado final del ciclo)
+            if not bulto.fecha_entrega:
+                bulto.fecha_entrega = timezone.now()
+                bulto.save(update_fields=['fecha_entrega'])
+            
+            # Si la solicitud no está despachada, actualizarla (sincronización)
             if solicitud.estado != 'despachado':
                 solicitud.estado = 'despachado'
                 solicitud.save(update_fields=['estado'])
-    elif bulto.estado == 'en_ruta':
-        if not bulto.fecha_envio:
-            bulto.fecha_envio = timezone.now()
-            bulto.save(update_fields=['fecha_envio'])
-        for solicitud in bulto.solicitudes.all():
+        elif bulto.estado == 'entregado':
+            # Mantener lógica existente para 'entregado' (estado intermedio)
+            bulto.fecha_entrega = bulto.fecha_entrega or timezone.now()
+            bulto.save(update_fields=['fecha_entrega'])
+            if solicitud.estado != 'despachado':
+                solicitud.estado = 'despachado'
+                solicitud.save(update_fields=['estado'])
+        elif bulto.estado == 'en_ruta':
+            if not bulto.fecha_envio:
+                bulto.fecha_envio = timezone.now()
+                bulto.save(update_fields=['fecha_envio'])
             if solicitud.estado != 'en_ruta':
                 solicitud.estado = 'en_ruta'
                 solicitud.save(update_fields=['estado'])
-    elif bulto.estado == 'listo_despacho':
-        for solicitud in bulto.solicitudes.all():
+        elif bulto.estado == 'listo_despacho':
             if solicitud.estado not in ['listo_despacho', 'en_ruta', 'despachado']:
                 solicitud.estado = 'listo_despacho'
                 solicitud.save(update_fields=['estado'])

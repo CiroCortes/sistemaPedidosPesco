@@ -73,6 +73,24 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
                 request,
                 f"ℹ️ Usando {len(productos_excel)} productos del archivo Excel."
             )
+        # Si NO hay productos del Excel, enriquecer los productos del payload de Gemini
+        elif payload.get("productos"):
+            from .excel_processor import _enriquecer_con_inventario
+            print(f"\n🔍 Enriqueciendo {len(payload['productos'])} productos desde Gemini...")
+            productos_gemini = payload["productos"]
+            productos_enriquecidos = _enriquecer_con_inventario(productos_gemini, [])
+            payload["productos"] = productos_enriquecidos
+            
+            # Logging para debugging
+            for prod in productos_enriquecidos:
+                if prod.get('_bodega_auto'):
+                    print(f"   ✅ {prod['codigo']}: Bodega {prod['bodega']} (Stock: {prod.get('_stock_disponible', 'N/A')})")
+                    if prod.get('_bodegas_alternativas'):
+                        print(f"      Alternativas: {', '.join(prod['_bodegas_alternativas'])}")
+                elif prod.get('_sin_stock'):
+                    print(f"   ⚠️  {prod['codigo']}: Sin stock disponible (orden especial)")
+                else:
+                    print(f"   ℹ️  {prod['codigo']}: Bodega {prod.get('bodega', 'N/A')} (manual)")
 
         # Crear solicitud
         try:

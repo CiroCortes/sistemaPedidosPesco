@@ -204,20 +204,34 @@ def gestion_pedidos(request):
 
     prefetch = Prefetch('detalles', queryset=detalles_qs, to_attr='detalles_visibles')
 
+    # Bodegas permitidas para preparadores (excluye 013 que es solo despacho)
+    BODEGAS_PERMITIDAS = ['013-03', '013-01', '013-05', '013-08', '013-09', '013-PP', '013-PS']
+    
     codigos = list(detalles_qs.values_list('codigo', flat=True))
     stock_qs = Stock.objects.filter(codigo__in=codigos)
+    
+    # Filtrar solo bodegas permitidas (excluye 013 y otras bodegas no permitidas)
+    stock_qs = stock_qs.filter(bodega__in=BODEGAS_PERMITIDAS)
+    
+    # Si el usuario es de bodega, también filtrar por sus bodegas asignadas (si aplica)
     if user.es_bodega() and bodegas_usuario:
-        stock_qs = stock_qs.filter(bodega__in=bodegas_usuario)
+        # Intersectar bodegas permitidas con bodegas del usuario
+        bodegas_filtradas = [b for b in bodegas_usuario if b in BODEGAS_PERMITIDAS]
+        if bodegas_filtradas:
+            stock_qs = stock_qs.filter(bodega__in=bodegas_filtradas)
+    
     stock_map = {}
     for stock in stock_qs:
-        stock_map.setdefault(stock.codigo, []).append({
-            'bodega': stock.bodega,
-            'bodega_nombre': stock.bodega_nombre or '',
-            'ubicacion': stock.ubicacion or '',
-            'ubicacion_2': stock.ubicacion_2 or '',
-            'stock': stock.stock_disponible,
-            'descripcion': stock.descripcion or '',
-        })
+        # Doble verificación: asegurar que solo incluimos bodegas permitidas y excluir 013
+        if stock.bodega in BODEGAS_PERMITIDAS and stock.bodega != '013':
+            stock_map.setdefault(stock.codigo, []).append({
+                'bodega': stock.bodega,
+                'bodega_nombre': stock.bodega_nombre or '',
+                'ubicacion': stock.ubicacion or '',
+                'ubicacion_2': stock.ubicacion_2 or '',
+                'stock': stock.stock_disponible,
+                'descripcion': stock.descripcion or '',
+            })
 
     solicitudes = []
     for solicitud in solicitudes_qs.prefetch_related(prefetch):
