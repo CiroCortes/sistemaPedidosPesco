@@ -30,7 +30,7 @@ db.sqlite3-journal
 media/
 staticfiles/
 
-# Environment variables
+# Environment variables (NO incluir .env.example en .gitignore - debe estar en el repo)
 .env
 .env.local
 .env.*.local

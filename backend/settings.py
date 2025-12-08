@@ -29,9 +29,10 @@ load_dotenv()
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-_rv8(hubd8xif2qbei+s#=rp9=gm(smxpknzu#q7t$q^rg^&0(')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'  # Por defecto False en producción
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# ALLOWED_HOSTS debe incluir el dominio de Render
+ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
 
 
 # Application definition
@@ -102,25 +103,40 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 # Configuración para Supabase (PostgreSQL)
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'postgres'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
-        'OPTIONS': {
-            'sslmode': 'require',  # Supabase requiere SSL
-            'connect_timeout': 10,  # Timeout de 10 segundos
-            'keepalives': 1,  # Mantener conexión viva
-            'keepalives_idle': 30,  # Segundos antes de keepalive
-            'keepalives_interval': 10,  # Intervalo entre keepalives
-            'keepalives_count': 5,  # Intentos antes de fallar
-        },
-        'CONN_MAX_AGE': 0,  # No reutilizar conexiones (más estable con cambios de red)
+# Soporta DATABASE_URL de Render y variables individuales
+import dj_database_url
+
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    # Render.com proporciona DATABASE_URL directamente
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-}
+else:
+    # Fallback a variables individuales (desarrollo local)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'postgres'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'OPTIONS': {
+                'sslmode': 'require',  # Supabase requiere SSL
+                'connect_timeout': 10,  # Timeout de 10 segundos
+                'keepalives': 1,  # Mantener conexión viva
+                'keepalives_idle': 30,  # Segundos antes de keepalive
+                'keepalives_interval': 10,  # Intervalo entre keepalives
+                'keepalives_count': 5,  # Intentos antes de fallar
+            },
+            'CONN_MAX_AGE': 0,  # No reutilizar conexiones (más estable con cambios de red)
+        }
+    }
 
 
 # Password validation
