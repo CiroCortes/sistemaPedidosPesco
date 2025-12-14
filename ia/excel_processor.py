@@ -44,13 +44,18 @@ def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bo
         columnas = detectar_columnas(df)
         
         # Extraer productos
+        # OPTIMIZACIÓN: Usar itertuples() en lugar de iterrows() para mejor rendimiento (~10x más rápido)
         productos = []
         codigos_sin_descripcion = []
         
-        for idx, row in df.iterrows():
+        # Crear mapeo de índices de columnas para acceso por posición (itertuples permite acceso por índice)
+        col_indices = {k: list(df.columns).index(v) for k, v in columnas.items() if v in df.columns}
+        
+        for row in df.itertuples(index=False, name=None):
             try:
-                codigo = str(row[columnas['codigo']]).strip()
-                cantidad = extraer_cantidad(row[columnas['cantidad']])
+                # Acceder a columnas por índice (row es una tupla cuando name=None)
+                codigo = str(row[col_indices['codigo']]).strip() if 'codigo' in col_indices else ''
+                cantidad = extraer_cantidad(row[col_indices['cantidad']]) if 'cantidad' in col_indices else 0
                 
                 # Saltar filas vacías
                 if not codigo or codigo.lower() in ['nan', 'none', '']:
@@ -62,8 +67,8 @@ def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bo
                 }
                 
                 # Agregar descripción si existe en el Excel
-                if columnas.get('descripcion'):
-                    descripcion = str(row[columnas['descripcion']]).strip()
+                if 'descripcion' in col_indices:
+                    descripcion = str(row[col_indices['descripcion']]).strip()
                     if descripcion and descripcion.lower() not in ['nan', 'none', '']:
                         producto['descripcion'] = descripcion
                     else:
@@ -72,14 +77,14 @@ def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bo
                     codigos_sin_descripcion.append(codigo)
                 
                 # Agregar bodega si existe en el Excel
-                if columnas.get('bodega'):
-                    bodega = str(row[columnas['bodega']]).strip()
+                if 'bodega' in col_indices:
+                    bodega = str(row[col_indices['bodega']]).strip()
                     if bodega and bodega.lower() not in ['nan', 'none', '']:
                         producto['bodega'] = bodega
                 
                 productos.append(producto)
                 
-            except Exception as e:
+            except (IndexError, AttributeError, KeyError, TypeError) as e:
                 # Saltar filas con errores pero continuar
                 continue
         
@@ -150,6 +155,31 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
         
         # Normalizar bodegas activas para comparación (sin espacios, mayúsculas)
         bodegas_activas_normalizadas = {b.strip().upper() for b in bodegas_activas}
+        
+        # OPTIMIZACIÓN: Pre-calcular stock totales y bodegas con stock para TODOS los códigos
+        # Esto evita queries N+1 dentro del loop más abajo
+        stock_totales_cache = {}
+        bodegas_con_stock_cache = {}
+        if todos_codigos:
+            # Calcular stock totales en batch
+            from django.db.models import Sum
+            stock_agregado = Stock.objects.filter(codigo__in=todos_codigos).values('codigo').annotate(
+                total=Sum('stock_disponible')
+            )
+            for item in stock_agregado:
+                stock_totales_cache[item['codigo']] = item['total'] or 0
+            
+            # Calcular bodegas con stock en batch
+            bodegas_con_stock_qs = Stock.objects.filter(
+                codigo__in=todos_codigos,
+                stock_disponible__gt=0
+            ).values('codigo', 'bodega').distinct()
+            
+            for item in bodegas_con_stock_qs:
+                codigo = item['codigo']
+                if codigo not in bodegas_con_stock_cache:
+                    bodegas_con_stock_cache[codigo] = []
+                bodegas_con_stock_cache[codigo].append(item['bodega'])
         
         # Mapas para búsqueda rápida
         descripciones_map = {}
@@ -235,14 +265,9 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
                     # El sistema lo tratará como orden especial
                     producto['bodega'] = ''
                     producto['_sin_stock'] = True
-                    # Logging de diagnóstico
-                    stock_total = Stock.objects.filter(codigo=codigo).aggregate(
-                        total=Sum('stock_disponible')
-                    )['total'] or 0
-                    bodegas_con_stock = list(Stock.objects.filter(
-                        codigo=codigo,
-                        stock_disponible__gt=0
-                    ).values_list('bodega', flat=True).distinct())
+                    # OPTIMIZACIÓN: Usar datos pre-calculados del cache en lugar de queries individuales
+                    stock_total = stock_totales_cache.get(codigo, 0)
+                    bodegas_con_stock = bodegas_con_stock_cache.get(codigo, [])
                     print(f"   ⚠️  {codigo}: Sin stock en bodegas activas. Stock total en BD: {stock_total}, Bodegas con stock: {', '.join(bodegas_con_stock) if bodegas_con_stock else 'NINGUNA'}")
         
         return productos
