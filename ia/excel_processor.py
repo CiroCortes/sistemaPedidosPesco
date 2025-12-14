@@ -6,6 +6,10 @@ Extrae códigos de productos y cantidades de un archivo Excel simple.
 from typing import List, Dict, Any
 import pandas as pd
 from io import BytesIO
+import os
+
+# Variable para controlar logging (solo en desarrollo)
+DEBUG_MODE = os.getenv('DEBUG', 'False') == 'True'
 
 
 class ExcelProcessorError(Exception):
@@ -97,19 +101,21 @@ def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bo
         # Enriquecer con descripciones y bodegas del inventario
         # SIEMPRE enriquecer para asegurar consistencia
         if enriquecer_con_inventario:
-            print(f"\n🔍 Enriqueciendo {len(productos)} productos desde Stock...")
+            if DEBUG_MODE:
+                print(f"\n🔍 Enriqueciendo {len(productos)} productos desde Stock...")
             productos = _enriquecer_con_inventario(productos, codigos_sin_descripcion)
             
-            # Logging para debugging
-            for prod in productos:
-                if prod.get('_bodega_auto'):
-                    print(f"   ✅ {prod['codigo']}: Bodega {prod['bodega']} (Stock: {prod.get('_stock_disponible', 'N/A')})")
-                    if prod.get('_bodegas_alternativas'):
-                        print(f"      Alternativas: {', '.join(prod['_bodegas_alternativas'])}")
-                elif prod.get('_sin_stock'):
-                    print(f"   ⚠️  {prod['codigo']}: Sin stock disponible (orden especial)")
-                else:
-                    print(f"   ℹ️  {prod['codigo']}: Bodega {prod.get('bodega', 'N/A')} (manual)")
+            # Logging solo en modo desarrollo (optimización: evitar prints en producción)
+            if DEBUG_MODE:
+                for prod in productos:
+                    if prod.get('_bodega_auto'):
+                        print(f"   ✅ {prod['codigo']}: Bodega {prod['bodega']} (Stock: {prod.get('_stock_disponible', 'N/A')})")
+                        if prod.get('_bodegas_alternativas'):
+                            print(f"      Alternativas: {', '.join(prod['_bodegas_alternativas'])}")
+                    elif prod.get('_sin_stock'):
+                        print(f"   ⚠️  {prod['codigo']}: Sin stock disponible (orden especial)")
+                    else:
+                        print(f"   ℹ️  {prod['codigo']}: Bodega {prod.get('bodega', 'N/A')} (manual)")
         
         return productos
         
@@ -148,10 +154,11 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
         # Obtener bodegas activas del sistema
         bodegas_activas = list(Bodega.objects.filter(activa=True).values_list('codigo', flat=True))
         
-        # Logging de diagnóstico
-        print(f"   📦 Bodegas activas en sistema: {', '.join(bodegas_activas) if bodegas_activas else 'NINGUNA'}")
-        print(f"   🔍 Códigos a buscar: {', '.join(todos_codigos)}")
-        print(f"   📊 Registros encontrados en Stock: {stock_items.count()}")
+        # Logging de diagnóstico solo en desarrollo (optimización: evitar prints costosos en producción)
+        if DEBUG_MODE:
+            print(f"   📦 Bodegas activas en sistema: {', '.join(bodegas_activas) if bodegas_activas else 'NINGUNA'}")
+            print(f"   🔍 Códigos a buscar: {len(todos_codigos)} códigos únicos")
+            print(f"   📊 Registros encontrados en Stock: {stock_items.count()}")
         
         # Normalizar bodegas activas para comparación (sin espacios, mayúsculas)
         bodegas_activas_normalizadas = {b.strip().upper() for b in bodegas_activas}
@@ -257,7 +264,8 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
                                 f"{b['bodega']} ({b['stock']} unids)" for b in bodegas
                             ]
                             bodegas_fuera_prioridad = [b['bodega'] for b in bodegas]
-                            print(f"   ⚠️  {codigo}: Sin stock en bodegas de prioridad. Bodegas disponibles (fuera de prioridad): {', '.join(bodegas_fuera_prioridad)}")
+                            if DEBUG_MODE:
+                                print(f"   ⚠️  {codigo}: Sin stock en bodegas de prioridad. Bodegas disponibles (fuera de prioridad): {', '.join(bodegas_fuera_prioridad)}")
                         else:
                             producto['_bodegas_alternativas'] = []
                 else:
@@ -268,15 +276,18 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
                     # OPTIMIZACIÓN: Usar datos pre-calculados del cache en lugar de queries individuales
                     stock_total = stock_totales_cache.get(codigo, 0)
                     bodegas_con_stock = bodegas_con_stock_cache.get(codigo, [])
-                    print(f"   ⚠️  {codigo}: Sin stock en bodegas activas. Stock total en BD: {stock_total}, Bodegas con stock: {', '.join(bodegas_con_stock) if bodegas_con_stock else 'NINGUNA'}")
+                    if DEBUG_MODE:
+                        print(f"   ⚠️  {codigo}: Sin stock en bodegas activas. Stock total en BD: {stock_total}, Bodegas con stock: {', '.join(bodegas_con_stock) if bodegas_con_stock else 'NINGUNA'}")
         
         return productos
         
     except ImportError as e:
-        print(f"⚠️ Error de importación en _enriquecer_con_inventario: {e}")
+        if DEBUG_MODE:
+            print(f"⚠️ Error de importación en _enriquecer_con_inventario: {e}")
         return productos
     except Exception as e:
-        print(f"⚠️ Error en _enriquecer_con_inventario: {e}")
+        if DEBUG_MODE:
+            print(f"⚠️ Error en _enriquecer_con_inventario: {e}")
         return productos
 
 
