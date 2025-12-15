@@ -113,9 +113,15 @@
                 Estados
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'configuracion:lista_tipos_solicitud' %}">
+                <i class="bi bi-file-earmark-text me-2"></i>
+                Tipos de Solicitud
+            </a>
+        </li>
 
         <li class="nav-item">
-            <a class="nav-link" href="#">
+            <a class="nav-link {% if 'reportes' in request.path %}active{% endif %}" href="{% url 'reportes:informe_completo' %}">
                 <i class="bi bi-bar-chart me-2"></i>
                 Reportes y KPIs
             </a>

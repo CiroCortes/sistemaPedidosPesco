@@ -10,7 +10,7 @@ import json
 
 from core.decorators import role_required
 from core.models import Bodega
-from configuracion.models import EstadoWorkflow
+from configuracion.models import EstadoWorkflow, TipoSolicitud
 from .forms import SolicitudForm, SolicitudDetalleFormSet, SolicitudEdicionAdminForm
 from .models import Solicitud
 from .services import crear_solicitud_desde_payload, SolicitudServiceError
@@ -41,11 +41,12 @@ def lista_solicitudes(request):
     if user.es_bodega():
         bodegas_usuario = user.get_bodegas_codigos()
         # Optimización: usar Exists en lugar de JOIN + distinct (mucho más rápido)
+        # Excluir bodega='013' que es solo despacho y no requiere preparación
         detalles_pendientes = SolicitudDetalle.objects.filter(
             solicitud=OuterRef('pk'),
             bodega__in=bodegas_usuario,
             estado_bodega='pendiente'
-        )
+        ).exclude(bodega='013')  # Bodega 013 es solo despacho
         solicitudes = solicitudes.annotate(
             tiene_pendientes=Exists(detalles_pendientes)
         ).filter(tiene_pendientes=True)
@@ -104,7 +105,7 @@ def lista_solicitudes(request):
         'busqueda': busqueda,
         'stats': stats,
         'es_admin': user.es_admin(),
-        'tipos': Solicitud.TIPOS,
+        'tipos': [(t.codigo, t.nombre) for t in TipoSolicitud.activos()] if TipoSolicitud.activos().exists() else Solicitud.TIPOS,
         'estados_config': estados_opciones,
     }
     return render(request, 'solicitudes/lista.html', context)
@@ -159,16 +160,32 @@ def crear_solicitud(request):
                 solicitud.codigo = primera.get('codigo') or 'SC'
                 solicitud.descripcion = primera.get('descripcion') or ''
                 solicitud.cantidad_solicitada = primera.get('cantidad')
+                
+                # LÓGICA: Si todos los detalles tienen bodega='013', la solicitud va directo a despacho
+                todas_bodega_013 = all(
+                    (cd.get('bodega') or '').strip() == '013' 
+                    for cd in detalles_validos
+                )
+                if todas_bodega_013:
+                    solicitud.estado = 'en_despacho'
 
                 solicitud.save()
 
                 # Guardar todas las líneas en SolicitudDetalle
+                # Si todas las bodegas son '013', los detalles se crean con estado_bodega='preparado'
+                # porque la solicitud ya está en 'en_despacho' y no requieren preparación
                 for cd in detalles_validos:
+                    bodega_detalle = (cd.get('bodega') or '').strip()
+                    # Si todas son bodega 013, todos los detalles van a 'preparado'
+                    # Si no, usan 'pendiente' (requieren preparación)
+                    estado_bodega_inicial = 'preparado' if todas_bodega_013 else 'pendiente'
+                    
                     solicitud.detalles.create(
                         codigo=cd.get('codigo') or 'SC',
                         descripcion=cd.get('descripcion') or '',
                         cantidad=cd.get('cantidad'),
-                        bodega=cd.get('bodega') or '',
+                        bodega=bodega_detalle,
+                        estado_bodega=estado_bodega_inicial,
                     )
 
                 messages.success(request, f'Solicitud #{solicitud.id} creada correctamente.')
@@ -201,9 +218,10 @@ def detalle_solicitud(request, pk):
     detalles = solicitud.detalles.all()
     
     # Filtrar detalles si es usuario de bodega
+    # Excluir bodega='013' que es solo despacho y no requiere preparación
     if request.user.es_bodega():
         bodegas_usuario = request.user.get_bodegas_codigos()
-        detalles = detalles.filter(bodega__in=bodegas_usuario)
+        detalles = detalles.filter(bodega__in=bodegas_usuario).exclude(bodega='013')
         
     return render(request, 'solicitudes/detalle.html', {'solicitud': solicitud, 'detalles': detalles})
 
@@ -217,6 +235,11 @@ def preparar_producto(request, detalle_id):
     from .models import SolicitudDetalle
     
     detalle = get_object_or_404(SolicitudDetalle, pk=detalle_id)
+    
+    # Bodega '013' no requiere preparación - es solo despacho
+    if detalle.bodega == '013':
+        messages.error(request, 'Los productos con bodega 013 no requieren preparación. Van directo a despacho.')
+        return redirect('solicitudes:detalle', pk=detalle.solicitud.id)
     
     # Verificar permisos
     if not request.user.puede_gestionar_bodega(detalle.bodega):
@@ -401,8 +424,10 @@ def api_crear_solicitud_ia(request: HttpRequest) -> HttpResponse:
 def editar_solicitud(request, pk):
     """
     Permite al admin editar cualquier aspecto de la solicitud.
+    Si el estado cambia a 'despachado', finaliza automáticamente los bultos asociados.
     """
     solicitud = get_object_or_404(Solicitud, pk=pk)
+    estado_anterior = solicitud.estado  # Guardar estado antes de editar
     
     if request.method == 'POST':
         form = SolicitudEdicionAdminForm(request.POST, instance=solicitud)
@@ -411,6 +436,96 @@ def editar_solicitud(request, pk):
         if form.is_valid() and formset.is_valid():
             form.save()
             formset.save()
+            
+            # Recargar la solicitud para obtener el estado actualizado del formulario
+            solicitud.refresh_from_db()
+            nuevo_estado = solicitud.estado
+            
+            # Si el estado cambió a 'despachado', finalizar bultos automáticamente (si los tiene)
+            if nuevo_estado == 'despachado' and estado_anterior != 'despachado':
+                from despacho.models import Bulto
+                from django.utils import timezone
+                from .services import descontar_stock_despachado
+                import logging
+                
+                logger = logging.getLogger(__name__)
+                
+                print(f"\n{'='*60}")
+                print(f"🚚 PROCESANDO DESPACHO DESDE EDICIÓN - Solicitud #{solicitud.id}")
+                print(f"{'='*60}")
+                print(f"   Estado anterior: {estado_anterior}")
+                print(f"   Nuevo estado: {nuevo_estado}")
+                print(f"   Afecta stock: {solicitud.afecta_stock}")
+                
+                # BUSCAR TODOS los bultos asociados a esta solicitud (si los tiene)
+                bultos_asociados = Bulto.objects.filter(solicitud=solicitud)
+                total_bultos = bultos_asociados.count()
+                
+                print(f"\n📦 ACTUALIZACIÓN DE BULTOS:")
+                print(f"   Bultos encontrados: {total_bultos}")
+                logger.info(f"Finalizando bultos desde edición para solicitud #{solicitud.id}. Total: {total_bultos}")
+                
+                bultos_actualizados = 0
+                if total_bultos > 0:
+                    # Si tiene bultos, finalizarlos
+                    ahora = timezone.now()
+                    
+                    for bulto in bultos_asociados:
+                        estado_anterior_bulto = bulto.estado
+                        print(f"\n   📦 Bulto {bulto.codigo}:")
+                        print(f"      Estado anterior: '{estado_anterior_bulto}'")
+                        
+                        # SIEMPRE actualizar a 'finalizado' cuando la solicitud está despachada
+                        bulto.estado = 'finalizado'
+                        campos_actualizar = ['estado']
+                        
+                        # Establecer fechas si no existen
+                        if not bulto.fecha_entrega:
+                            bulto.fecha_entrega = ahora
+                            campos_actualizar.append('fecha_entrega')
+                            print(f"      ✅ Fecha entrega establecida: {bulto.fecha_entrega}")
+                        
+                        if not bulto.fecha_envio:
+                            bulto.fecha_envio = ahora
+                            campos_actualizar.append('fecha_envio')
+                            print(f"      ✅ Fecha envío establecida: {bulto.fecha_envio}")
+                        
+                        try:
+                            bulto.save(update_fields=campos_actualizar)
+                            bultos_actualizados += 1
+                            print(f"      ✅ Bulto actualizado a 'finalizado'")
+                            logger.info(f"Bulto {bulto.codigo} finalizado desde edición para solicitud #{solicitud.id}")
+                        except Exception as e:
+                            print(f"      ❌ ERROR al guardar bulto: {e}")
+                            logger.error(f"Error al finalizar bulto {bulto.codigo}: {e}", exc_info=True)
+                else:
+                    print(f"   ℹ️  No se encontraron bultos asociados (puede ser Retira Cliente sin bulto)")
+                    logger.info(f"Solicitud #{solicitud.id} marcada como despachada sin bultos (Retira Cliente)")
+                
+                # Actualizar detalles que tienen bulto asignado (si los hay)
+                detalles_con_bulto = solicitud.detalles.filter(bulto__isnull=False)
+                if detalles_con_bulto.exists():
+                    detalles_actualizados = detalles_con_bulto.exclude(estado_bodega='preparado').update(estado_bodega='preparado')
+                    if detalles_actualizados > 0:
+                        logger.info(f"{detalles_actualizados} detalles actualizados a 'preparado' para solicitud #{solicitud.id}")
+                
+                # Descontar stock si corresponde (solo si afecta stock)
+                resultado_descuento = descontar_stock_despachado(solicitud)
+                logger.info(f"Resultado descuento stock desde edición solicitud #{solicitud.id}: {resultado_descuento}")
+                
+                # Mensajes informativos
+                if bultos_actualizados > 0:
+                    messages.info(request, f'{bultos_actualizados} bulto(s) finalizado(s) automáticamente.')
+                
+                if resultado_descuento.get('descontados', 0) > 0:
+                    messages.info(request, f"Se descontaron {resultado_descuento['descontados']} productos de bodega 013.")
+                
+                print(f"\n{'='*60}")
+                print(f"✅ DESPACHO PROCESADO EXITOSAMENTE DESDE EDICIÓN")
+                print(f"   Bultos actualizados: {bultos_actualizados}/{total_bultos}")
+                print(f"   Productos descontados: {resultado_descuento.get('descontados', 0)}")
+                print(f"{'='*60}\n")
+            
             messages.success(request, f'Solicitud #{solicitud.id} actualizada correctamente.')
             return redirect('solicitudes:detalle', pk=solicitud.pk)
     else:
@@ -485,43 +600,120 @@ def cambiar_estado_solicitud(request, pk):
     resultado_descuento = None
     bultos_actualizados = 0
     
-    if nuevo_estado == 'despachado' and estado_anterior != 'despachado':
-        # Actualizar todos los bultos asociados a esta solicitud a 'finalizado'
-        # El estado 'finalizado' indica que el bulto está completamente cerrado
-        from despacho.models import Bulto
-        bultos_asociados = solicitud.bultos.all()
-        for bulto in bultos_asociados:
-            if bulto.estado != 'finalizado':
-                bulto.estado = 'finalizado'
-                # Si no tiene fecha_entrega, establecerla ahora
-                if not bulto.fecha_entrega:
-                    bulto.fecha_entrega = timezone.now()
-                bulto.save(update_fields=['estado', 'fecha_entrega'])
-                bultos_actualizados += 1
-                logger.info(f"Bulto {bulto.codigo} actualizado a 'finalizado' por solicitud #{solicitud.id}")
+    # LÓGICA SIMPLE: Si la solicitud pasa a 'despachado', buscar TODOS los bultos asociados y finalizarlos
+    if nuevo_estado == 'despachado':
+        print(f"\n{'='*60}")
+        print(f"🚚 PROCESANDO DESPACHO - Solicitud #{solicitud.id}")
+        print(f"{'='*60}")
+        print(f"   Afecta stock: {solicitud.afecta_stock}")
+        print(f"   Estado anterior: {estado_anterior}")
+        print(f"   Nuevo estado: {nuevo_estado}")
         
-        # Descontar stock
-        logger.info(f"Ejecutando descuento de stock para solicitud #{solicitud.id}")
-        resultado_descuento = descontar_stock_despachado(solicitud)
-        logger.info(f"Resultado descuento: {resultado_descuento}")
-        
-        if not resultado_descuento['success']:
-            mensaje = f'Solicitud marcada como despachada, pero hubo errores al descontar stock: {resultado_descuento.get("errores", [])}'
-            return JsonResponse({
-                'success': True,
-                'warning': True,
-                'message': mensaje,
-                'descuento': resultado_descuento
-            })
-    elif nuevo_estado == 'despachado' and estado_anterior == 'despachado':
-        logger.info(f"Solicitud #{solicitud.id} ya estaba despachada, no se descuenta nuevamente")
+        # SOLO procesar si cambió el estado (evitar procesar múltiples veces)
+        if estado_anterior != 'despachado':
+            from despacho.models import Bulto
+            
+            # BUSCAR TODOS los bultos asociados a esta solicitud
+            bultos_asociados = Bulto.objects.filter(solicitud=solicitud)
+            total_bultos = bultos_asociados.count()
+            
+            print(f"\n📦 ACTUALIZACIÓN DE BULTOS:")
+            print(f"   Bultos encontrados: {total_bultos}")
+            logger.info(f"Buscando bultos para solicitud #{solicitud.id}. Total: {total_bultos}")
+            
+            if total_bultos > 0:
+                # ACTUALIZAR DIRECTAMENTE todos los bultos a 'finalizado' y establecer fechas si faltan
+                ahora = timezone.now()
+                
+                for bulto in bultos_asociados:
+                    estado_anterior_bulto = bulto.estado
+                    print(f"\n   📦 Bulto {bulto.codigo}:")
+                    print(f"      Estado anterior: '{estado_anterior_bulto}'")
+                    
+                    # SIEMPRE actualizar a 'finalizado' cuando la solicitud está despachada
+                    bulto.estado = 'finalizado'
+                    campos_actualizar = ['estado']
+                    
+                    # Establecer fechas si no existen
+                    if not bulto.fecha_entrega:
+                        bulto.fecha_entrega = ahora
+                        campos_actualizar.append('fecha_entrega')
+                        print(f"      ✅ Fecha entrega establecida: {bulto.fecha_entrega}")
+                    
+                    if not bulto.fecha_envio:
+                        bulto.fecha_envio = ahora
+                        campos_actualizar.append('fecha_envio')
+                        print(f"      ✅ Fecha envío establecida: {bulto.fecha_envio}")
+                    
+                    try:
+                        bulto.save(update_fields=campos_actualizar)
+                        bultos_actualizados += 1
+                        print(f"      ✅ Bulto actualizado a 'finalizado'")
+                        logger.info(f"Bulto {bulto.codigo} actualizado a 'finalizado' para solicitud #{solicitud.id}")
+                    except Exception as e:
+                        print(f"      ❌ ERROR al guardar bulto: {e}")
+                        logger.error(f"Error al actualizar bulto {bulto.codigo}: {e}", exc_info=True)
+            else:
+                print(f"   ⚠️  ADVERTENCIA: No se encontraron bultos asociados a la solicitud")
+                logger.warning(f"No se encontraron bultos para solicitud #{solicitud.id}")
+            
+            # Actualizar detalles que tienen bulto asignado (marcarlos como 'preparado' que es el estado final)
+            # Nota: Los detalles no tienen un estado 'despachado', así que los mantenemos en 'preparado'
+            print(f"\n📋 ACTUALIZACIÓN DE DETALLES:")
+            detalles_con_bulto = solicitud.detalles.filter(bulto__isnull=False)
+            total_detalles_con_bulto = detalles_con_bulto.count()
+            print(f"   Detalles con bulto asignado: {total_detalles_con_bulto}")
+            logger.info(f"Actualizando detalles con bulto para solicitud #{solicitud.id}. Total: {total_detalles_con_bulto}")
+            
+            if total_detalles_con_bulto > 0:
+                detalles_actualizados = detalles_con_bulto.exclude(estado_bodega='preparado').update(estado_bodega='preparado')
+                if detalles_actualizados > 0:
+                    print(f"   ✅ {detalles_actualizados} detalles actualizados a 'preparado'")
+                    logger.info(f"{detalles_actualizados} detalles actualizados a 'preparado' para solicitud #{solicitud.id}")
+                else:
+                    print(f"   ℹ️  Todos los detalles ya estaban en estado 'preparado'")
+                    logger.info(f"Todos los detalles ya estaban 'preparado' para solicitud #{solicitud.id}")
+            
+            # Descontar stock
+            print(f"\n💰 DESCUENTO DE STOCK:")
+            print(f"   Afecta stock: {solicitud.afecta_stock}")
+            logger.info(f"Ejecutando descuento de stock para solicitud #{solicitud.id}. Afecta stock: {solicitud.afecta_stock}")
+            
+            resultado_descuento = descontar_stock_despachado(solicitud)
+            
+            print(f"   Resultado: {resultado_descuento.get('message', 'N/A')}")
+            print(f"   Productos descontados: {resultado_descuento.get('descontados', 0)}")
+            
+            if resultado_descuento.get('errores'):
+                print(f"   ⚠️  Errores encontrados: {resultado_descuento['errores']}")
+            
+            logger.info(f"Resultado descuento stock solicitud #{solicitud.id}: {resultado_descuento}")
+            
+            if not resultado_descuento['success']:
+                mensaje = f'Solicitud marcada como despachada, pero hubo errores al descontar stock: {resultado_descuento.get("errores", [])}'
+                print(f"\n   ❌ ERROR EN DESCUENTO DE STOCK")
+                logger.error(f"Error al descontar stock para solicitud #{solicitud.id}: {resultado_descuento.get('errores', [])}")
+                return JsonResponse({
+                    'success': True,
+                    'warning': True,
+                    'message': mensaje,
+                    'descuento': resultado_descuento
+                })
+            
+            print(f"\n{'='*60}")
+            print(f"✅ DESPACHO PROCESADO EXITOSAMENTE")
+            print(f"   Bultos actualizados: {bultos_actualizados}/{total_bultos}")
+            print(f"   Productos descontados: {resultado_descuento.get('descontados', 0)}")
+            print(f"{'='*60}\n")
+        else:
+            logger.info(f"Solicitud #{solicitud.id} ya estaba despachada, omitiendo procesamiento adicional")
     
     mensaje = f'Estado cambiado a {solicitud.get_estado_display()}'
     if numero_guia_despacho:
         mensaje += f' (Guía/Factura: {numero_guia_despacho})'
     if bultos_actualizados > 0:
         mensaje += f'. {bultos_actualizados} bulto(s) actualizado(s) a finalizado.'
-    if resultado_descuento and resultado_descuento['descontados'] > 0:
+    if resultado_descuento and resultado_descuento.get('descontados', 0) > 0:
         mensaje += f' Se descontaron {resultado_descuento["descontados"]} productos de bodega 013.'
     elif nuevo_estado == 'despachado' and not resultado_descuento:
         mensaje += ' (Ya estaba despachada, sin cambios en stock)'

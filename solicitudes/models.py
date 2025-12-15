@@ -3,7 +3,7 @@ from django.conf import settings
 from django.utils import timezone
 import pytz
 
-from configuracion.models import EstadoWorkflow, TransporteConfig
+from configuracion.models import EstadoWorkflow, TransporteConfig, TipoSolicitud
 
 
 def get_chile_date():
@@ -43,8 +43,8 @@ class Solicitud(models.Model):
         verbose_name='Hora de solicitud'
     )
     tipo = models.CharField(
-        max_length=2, 
-        choices=TIPOS,
+        max_length=10,  # Aumentado para permitir códigos más largos
+        choices=TIPOS,  # Se mantiene como fallback si no hay tipos en BD
         verbose_name='Tipo de solicitud'
     )
     numero_pedido = models.CharField(
@@ -216,6 +216,23 @@ class Solicitud(models.Model):
 
     def get_estado_display(self):
         return EstadoWorkflow.etiqueta(EstadoWorkflow.TIPO_SOLICITUD, self.estado)
+
+    def get_tipo_display(self):
+        """Retorna el nombre del tipo desde TipoSolicitud si existe, sino retorna el código"""
+        if self.tipo:
+            nombre = TipoSolicitud.etiqueta(self.tipo)
+            # Si no está en caché, retornar el código como fallback
+            if nombre == self.tipo:
+                # Intentar obtener desde el modelo directamente
+                tipo_obj = TipoSolicitud.obtener(self.tipo)
+                if tipo_obj:
+                    return tipo_obj.nombre
+                # Fallback a choices hardcodeados si no existe en BD
+                for codigo, nombre_choice in self.TIPOS:
+                    if codigo == self.tipo:
+                        return nombre_choice
+            return nombre
+        return self.tipo or ''
 
     def color_estado(self):
         """Retorna el color CSS según el estado"""

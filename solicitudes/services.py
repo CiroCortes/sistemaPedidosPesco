@@ -27,19 +27,30 @@ def descontar_stock_despachado(solicitud: Solicitud) -> Dict[str, Any]:
     Retorna un diccionario con información del descuento realizado.
     """
     from bodega.models import Stock
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Iniciando descuento de stock para solicitud #{solicitud.id}")
+    logger.info(f"  - Afecta stock: {solicitud.afecta_stock}")
     
     # Si la solicitud no afecta stock, no hacer nada
     if not solicitud.afecta_stock:
+        logger.info(f"Solicitud #{solicitud.id} no afecta stock, omitiendo descuento")
         return {
             'success': True,
             'descontados': 0,
-            'message': 'Solicitud no afecta stock (orden especial)'
+            'message': 'Solicitud no afecta stock (orden especial, garantías, traslados, etc.)'
         }
     
     # Obtener detalles que salieron (tienen bulto asignado)
     detalles_despachados = solicitud.detalles.filter(bulto__isnull=False)
+    total_detalles = detalles_despachados.count()
     
-    if not detalles_despachados.exists():
+    logger.info(f"Detalles con bulto asignado: {total_detalles}")
+    
+    if total_detalles == 0:
+        logger.warning(f"No hay detalles con bulto para solicitud #{solicitud.id}")
         return {
             'success': True,
             'descontados': 0,
@@ -49,9 +60,13 @@ def descontar_stock_despachado(solicitud: Solicitud) -> Dict[str, Any]:
     descontados = []
     errores = []
     
+    logger.info(f"Iniciando descuento de {total_detalles} productos...")
+    
     with transaction.atomic():
         for detalle in detalles_despachados:
             try:
+                logger.debug(f"Procesando: {detalle.codigo} x{detalle.cantidad} (Bulto: {detalle.bulto.codigo if detalle.bulto else 'N/A'})")
+                
                 stock_013 = Stock.objects.filter(
                     codigo=detalle.codigo,
                     bodega='013'
@@ -59,35 +74,44 @@ def descontar_stock_despachado(solicitud: Solicitud) -> Dict[str, Any]:
                 
                 if stock_013:
                     stock_anterior = stock_013.stock_disponible
-                    stock_013.stock_disponible = max(0, stock_013.stock_disponible - detalle.cantidad)
+                    stock_nuevo = max(0, stock_013.stock_disponible - detalle.cantidad)
+                    stock_013.stock_disponible = stock_nuevo
                     stock_013.save(update_fields=['stock_disponible'])
+                    
+                    logger.info(f"  ✅ {detalle.codigo}: {stock_anterior} → {stock_nuevo} (descontado: {detalle.cantidad})")
                     
                     descontados.append({
                         'codigo': detalle.codigo,
                         'cantidad': detalle.cantidad,
                         'stock_anterior': stock_anterior,
-                        'stock_nuevo': stock_013.stock_disponible,
+                        'stock_nuevo': stock_nuevo,
                         'bulto': detalle.bulto.codigo if detalle.bulto else None
                     })
                 else:
                     # No hay registro en bodega 013, puede ser normal si nunca se transfirió
+                    logger.warning(f"  ⚠️  {detalle.codigo}: No existe en bodega 013")
                     errores.append({
                         'codigo': detalle.codigo,
                         'mensaje': 'No existe en bodega 013'
                     })
             except Exception as e:
+                logger.error(f"  ❌ Error al procesar {detalle.codigo}: {e}", exc_info=True)
                 errores.append({
                     'codigo': detalle.codigo,
                     'mensaje': str(e)
                 })
     
-    return {
+    resultado = {
         'success': len(errores) == 0,
         'descontados': len(descontados),
         'detalles': descontados,
         'errores': errores,
         'message': f'Se descontaron {len(descontados)} productos de bodega 013'
     }
+    
+    logger.info(f"Descuento completado para solicitud #{solicitud.id}: {len(descontados)} descontados, {len(errores)} errores")
+    
+    return resultado
 
 
 class SolicitudServiceError(Exception):
@@ -249,6 +273,14 @@ def crear_solicitud_desde_payload(
         raise SolicitudServiceError("Debe haber al menos un producto en 'productos'.")
 
     primera = productos_validos[0]
+    
+    # LÓGICA: Si todos los detalles tienen bodega='013', la solicitud va directo a despacho
+    todas_bodega_013 = all(
+        (prod.get("bodega") or "").strip() == "013"
+        for prod in productos_validos
+    )
+    # Si todas son bodega 013, forzar estado a 'en_despacho' (ignora el estado del payload)
+    estado_final = "en_despacho" if todas_bodega_013 else estado
 
     solicitud = Solicitud(
         tipo=tipo,
@@ -258,7 +290,7 @@ def crear_solicitud_desde_payload(
         transporte=transporte,
         observacion=observacion,
         numero_ot=numero_ot,
-        estado=estado,
+        estado=estado_final,
         urgente=urgente,
         codigo=primera["codigo"],
         descripcion=primera["descripcion"],
@@ -271,16 +303,24 @@ def crear_solicitud_desde_payload(
     print(f"📋 SOLICITUD CREADA: #{solicitud.id}")
     print(f"   Cliente: {solicitud.cliente}")
     print(f"   Tipo: {solicitud.get_tipo_display()}")
+    print(f"   Estado: {solicitud.estado} {'(directo a despacho - todas bodega 013)' if todas_bodega_013 else ''}")
     print(f"   Productos: {len(productos_validos)}")
     print(f"{'='*60}\n")
 
     for prod in productos_validos:
+        bodega_prod = (prod.get("bodega") or "").strip()
+        # Si todas las bodegas son '013', todos los detalles van a 'preparado'
+        # porque la solicitud ya está en 'en_despacho' y no requieren preparación
+        # Si no todas son 013, usan 'pendiente' (requieren preparación normal)
+        estado_bodega_inicial = "preparado" if todas_bodega_013 else "pendiente"
+        
         detalle = SolicitudDetalle.objects.create(
             solicitud=solicitud,
             codigo=prod["codigo"],
             descripcion=prod["descripcion"],
             cantidad=prod["cantidad"],
-            bodega=prod.get("bodega", ""),
+            bodega=bodega_prod,
+            estado_bodega=estado_bodega_inicial,
         )
         
         # Logging para ver bodega asignada

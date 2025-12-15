@@ -231,6 +231,20 @@ CORS_ALLOWED_ORIGINS = [
 SESSION_COOKIE_AGE = 86400  # 24 horas
 SESSION_SAVE_EVERY_REQUEST = False
 
+# Cache configuration
+# Usando cache en memoria (locmem) - no requiere configuración adicional
+# Para producción con múltiples workers, considerar Redis o Memcached
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'pesco-cache',
+        'TIMEOUT': 300,  # 5 minutos por defecto
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+        }
+    }
+}
+
 # Token simple para API de IA (usado por servidor MCP / agentes externos)
 IA_API_TOKEN = os.getenv('IA_API_TOKEN', '')
 

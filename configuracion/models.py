@@ -167,3 +167,70 @@ class TransporteConfig(models.Model):
         cls._cache_etiquetas.clear()
         cls._cache_cargado = False
 
+
+class TipoSolicitud(models.Model):
+    """
+    Configuración de tipos de solicitud (PC, OC, EM, ST, OF, RM, etc.)
+    Permite gestionar los tipos de solicitud desde la base de datos.
+    """
+    codigo = models.CharField(max_length=10, unique=True, verbose_name='Código')
+    nombre = models.CharField(max_length=100, verbose_name='Nombre')
+    descripcion = models.TextField(blank=True, verbose_name='Descripción')
+    orden = models.PositiveIntegerField(default=0, verbose_name='Orden')
+    activo = models.BooleanField(default=True, verbose_name='Activo')
+    icono = models.CharField(max_length=50, default='file-text', blank=True, verbose_name='Icono')
+    color = models.CharField(max_length=30, default='primary', blank=True, verbose_name='Color')
+
+    # Caché en memoria para evitar queries repetidas
+    _cache_objetos = {}
+    _cache_etiquetas = {}
+    _cache_cargado = False
+
+    class Meta:
+        db_table = 'config_tipos_solicitud'
+        ordering = ['orden', 'codigo']
+        verbose_name = 'Tipo de solicitud'
+        verbose_name_plural = 'Tipos de solicitud'
+
+    def __str__(self):
+        return f"{self.codigo} - {self.nombre}"
+
+    @classmethod
+    def _cargar_cache(cls):
+        """Carga todos los tipos en caché una sola vez"""
+        if cls._cache_cargado:
+            return
+        
+        tipos = cls.objects.all()
+        for tipo in tipos:
+            cls._cache_objetos[tipo.codigo] = tipo
+            cls._cache_etiquetas[tipo.codigo] = tipo.nombre
+        
+        cls._cache_cargado = True
+
+    @classmethod
+    def activos(cls):
+        """Retorna tipos activos"""
+        cls._cargar_cache()
+        return cls.objects.filter(activo=True).order_by('orden', 'codigo')
+
+    @classmethod
+    def obtener(cls, codigo):
+        """Obtiene un tipo usando caché en memoria"""
+        cls._cargar_cache()
+        return cls._cache_objetos.get(codigo)
+
+    @classmethod
+    def etiqueta(cls, codigo):
+        """Retorna la etiqueta usando caché"""
+        cls._cargar_cache()
+        if codigo in cls._cache_etiquetas:
+            return cls._cache_etiquetas[codigo]
+        return codigo
+    
+    @classmethod
+    def limpiar_cache(cls):
+        """Limpia el caché (útil para testing o después de cambios)"""
+        cls._cache_objetos.clear()
+        cls._cache_etiquetas.clear()
+        cls._cache_cargado = False

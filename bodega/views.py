@@ -174,6 +174,7 @@ def gestion_pedidos(request):
         SolicitudDetalle.objects
         .select_related('reserva')
         .filter(estado_bodega__in=['pendiente', 'preparando'])
+        .exclude(bodega='013')  # Bodega 013 es solo despacho, no requiere preparación
         .order_by('id')
     )
 
@@ -294,6 +295,14 @@ def registrar_transferencia(request, detalle_id):
     is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
     user = request.user
     if user.es_bodega():
+        # Bodega '013' no requiere preparación - es solo despacho
+        if detalle.bodega == '013':
+            mensaje = 'Los productos con bodega 013 no requieren preparación. Van directo a despacho.'
+            if is_ajax:
+                return JsonResponse({'success': False, 'message': mensaje}, status=403)
+            messages.error(request, mensaje)
+            return redirect('bodega:gestion_pedidos')
+        
         bodegas_usuario = user.get_bodegas_codigos()
         if detalle.bodega and detalle.bodega not in bodegas_usuario:
             mensaje = 'No tienes permiso para gestionar esta bodega.'
@@ -397,16 +406,18 @@ def registrar_transferencia_multiple(request):
         SolicitudDetalle.objects
         .select_related('solicitud', 'reserva')
         .filter(pk__in=detalle_ids, estado_bodega__in=['pendiente', 'preparando'])
+        .exclude(bodega='013')  # Bodega 013 no requiere preparación
     )
 
     if len(detalles) != len(set(detalle_ids)):
-        return JsonResponse({'success': False, 'message': 'Algunos productos no existen o ya fueron entregados.'}, status=400)
+        return JsonResponse({'success': False, 'message': 'Algunos productos no existen, ya fueron entregados, o tienen bodega 013 (no requieren preparación).'}, status=400)
 
     user = request.user
     bodegas_usuario = user.get_bodegas_codigos() if hasattr(user, 'get_bodegas_codigos') else []
     if user.es_bodega():
         for detalle in detalles:
-            if detalle.bodega and detalle.bodega not in bodegas_usuario:
+            # Ya excluimos bodega='013' arriba, pero verificamos permisos para otras bodegas
+            if detalle.bodega and detalle.bodega != '013' and detalle.bodega not in bodegas_usuario:
                 return JsonResponse({
                     'success': False,
                     'message': f'No tienes permiso para gestionar la bodega {detalle.bodega}.'

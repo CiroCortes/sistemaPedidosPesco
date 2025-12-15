@@ -1,0 +1,396 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}KPI y Reportes - Informe Completo{% endblock %}
+
+{% block extra_css %}
+<style>
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background-color: #fff;
+        z-index: 10;
+        border-bottom: 2px solid #dee2e6;
+        font-weight: 600;
+        background-color: #f8f9fa;
+    }
+    
+    .filtros-card {
+        background-color: #f8f9fa;
+        border-left: 4px solid var(--pesco-primary, #00B4D8);
+    }
+    
+    .stats-badge {
+        font-size: 1.1rem;
+        padding: 0.5rem 1rem;
+    }
+    
+    /* Estilo tipo Excel - texto plano, sin formatos */
+    #tablaInforme {
+        border-collapse: collapse;
+        width: 100%;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 0.9rem;
+    }
+    
+    #tablaInforme tbody td {
+        color: #212529;
+        background-color: #fff;
+        padding: 0.5rem 0.75rem;
+        white-space: nowrap;
+        border: 1px solid #d0d0d0;
+        vertical-align: middle;
+    }
+    
+    #tablaInforme tbody tr:hover {
+        background-color: #f0f7ff;
+    }
+    
+    #tablaInforme thead th {
+        border: 1px solid #d0d0d0;
+        padding: 0.75rem;
+        text-align: left;
+        background-color: #f2f2f2;
+        font-weight: 600;
+        color: #212529;
+    }
+    
+    /* Fila de filtros en el header */
+    #tablaInforme .filtros-header th {
+        padding: 0.25rem;
+        background-color: #e8e8e8;
+    }
+    
+    #tablaInforme .filtros-header input {
+        width: 100%;
+        border: 1px solid #ccc;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.85rem;
+        background-color: #fff;
+    }
+    
+    #tablaInforme .filtros-header input:focus {
+        outline: 2px solid #00B4D8;
+        outline-offset: -2px;
+        border-color: #00B4D8;
+    }
+    
+    /* Quitar cualquier estilo de badges o código */
+    #tablaInforme .badge,
+    #tablaInforme code {
+        all: unset;
+        font-family: inherit;
+        font-size: inherit;
+        color: inherit;
+        background: none;
+        padding: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>
+        <i class="bi bi-file-earmark-spreadsheet me-2"></i>
+        Informe Completo - KPI y Reportes
+    </h2>
+    <span class="badge bg-primary stats-badge">
+        <i class="bi bi-list-ul me-1"></i>
+        {{ total_registros }} registro{{ total_registros|pluralize }}
+    </span>
+</div>
+
+<!-- Card de Filtros -->
+<div class="card filtros-card mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">
+            <i class="bi bi-funnel me-2"></i>
+            Filtros
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="get" action="{% url 'reportes:informe_completo' %}" id="filtrosForm">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label for="fecha_desde" class="form-label">Fecha Desde</label>
+                    <input type="date" class="form-control" id="fecha_desde" name="fecha_desde" 
+                           value="{{ filtros.fecha_desde }}">
+                </div>
+                <div class="col-md-3">
+                    <label for="fecha_hasta" class="form-label">Fecha Hasta</label>
+                    <input type="date" class="form-control" id="fecha_hasta" name="fecha_hasta" 
+                           value="{{ filtros.fecha_hasta }}">
+                </div>
+                <div class="col-md-2">
+                    <label for="tipo" class="form-label">Tipo</label>
+                    <select class="form-select" id="tipo" name="tipo">
+                        <option value="">Todos</option>
+                        {% for tipo_val, tipo_label in tipos_disponibles %}
+                            <option value="{{ tipo_val }}" {% if filtros.tipo == tipo_val %}selected{% endif %}>
+                                {{ tipo_label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="estado" class="form-label">Estado</label>
+                    <select class="form-select" id="estado" name="estado">
+                        <option value="">Todos</option>
+                        {% for estado_val in estados_disponibles %}
+                            <option value="{{ estado_val }}" {% if filtros.estado == estado_val %}selected{% endif %}>
+                                {{ estado_val|title }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search me-1"></i>
+                        Filtrar
+                    </button>
+                </div>
+            </div>
+            {% if filtros.fecha_desde or filtros.fecha_hasta or filtros.tipo or filtros.estado %}
+            <div class="row mt-3">
+                <div class="col-12">
+                    <a href="{% url 'reportes:informe_completo' %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Limpiar Filtros
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<!-- Tabla de Resultados -->
+{% if registros %}
+<div class="card">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-table me-2"></i>
+            Resultados del Informe
+        </h5>
+        <button type="button" class="btn btn-sm btn-success" onclick="exportarExcel()">
+            <i class="bi bi-file-earmark-excel me-1"></i>
+            Exportar a Excel
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table mb-0" id="tablaInforme">
+                <thead>
+                    <tr>
+                        <th>Fecha Ingreso</th>
+                        <th>Hora</th>
+                        <th>Tipo</th>
+                        <th>N° Pedido</th>
+                        <th>Código</th>
+                        <th>Descripción</th>
+                        <th>Cantidad</th>
+                        <th>Bodega</th>
+                        <th>Fecha Prep.</th>
+                        <th>Hora Prep.</th>
+                        <th>Transacción SAP</th>
+                        <th>Fecha Embalaje</th>
+                        <th>Hora Embalaje</th>
+                        <th>N° Guía</th>
+                        <th>Transporte</th>
+                        <th>N° OT</th>
+                        <th>Fecha Despacho</th>
+                        <th>Hora Despacho</th>
+                        <th>N° Bulto</th>
+                    </tr>
+                    <tr class="filtros-header">
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="0" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="1" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="2" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="3" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="4" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="5" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="6" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="7" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="8" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="9" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="10" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="11" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="12" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="13" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="14" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="15" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="16" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="17" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="18" placeholder="Filtrar..."></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for registro in registros %}
+                    <tr>
+                        <td>{{ registro.fecha_ingreso|default:"-" }}</td>
+                        <td>{{ registro.hora_ingreso|default:"-" }}</td>
+                        <td>{{ registro.tipo }}</td>
+                        <td>{{ registro.numero_pedido|default:"-" }}</td>
+                        <td>{{ registro.codigo }}</td>
+                        <td>{{ registro.descripcion|default:"-" }}</td>
+                        <td class="text-center">{{ registro.cantidad }}</td>
+                        <td>{{ registro.bodega_asignada|default:"-" }}</td>
+                        <td>{{ registro.fecha_preparacion|default:"-" }}</td>
+                        <td>{{ registro.hora_preparacion|default:"-" }}</td>
+                        <td>{{ registro.numero_transaccion_sap|default:"-" }}</td>
+                        <td>{{ registro.fecha_embalaje|default:"-" }}</td>
+                        <td>{{ registro.hora_embalaje|default:"-" }}</td>
+                        <td>{{ registro.numero_guia|default:"-" }}</td>
+                        <td>{{ registro.transporte|default:"-" }}</td>
+                        <td>{{ registro.numero_ot|default:"-" }}</td>
+                        <td>{{ registro.fecha_despacho|default:"-" }}</td>
+                        <td>{{ registro.hora_despacho|default:"-" }}</td>
+                        <td>{{ registro.numero_bulto|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle me-2"></i>
+    No se encontraron registros con los filtros seleccionados.
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Función para exportar a Excel (básica, puede mejorarse con librería)
+    function exportarExcel() {
+        const tabla = document.getElementById('tablaInforme');
+        if (!tabla) {
+            alert('No hay datos para exportar');
+            return;
+        }
+        
+        let csv = '';
+        const rows = tabla.querySelectorAll('tbody tr:not(.filtrado-oculto)');
+        
+        // Agregar encabezados
+        const headers = tabla.querySelectorAll('thead tr:first-child th');
+        const headerData = [];
+        headers.forEach(header => {
+            let text = header.innerText || header.textContent || '';
+            text = text.replace(/\n/g, ' ').trim();
+            headerData.push('"' + text.replace(/"/g, '""') + '"');
+        });
+        csv += headerData.join(',') + '\n';
+        
+        // Agregar datos
+        rows.forEach((row) => {
+            const cols = row.querySelectorAll('td');
+            const rowData = [];
+            cols.forEach(col => {
+                // Limpiar texto de badges y códigos HTML
+                let text = col.innerText || col.textContent || '';
+                text = text.replace(/\n/g, ' ').trim();
+                rowData.push('"' + text.replace(/"/g, '""') + '"');
+            });
+            csv += rowData.join(',') + '\n';
+        });
+        
+        // Crear blob y descargar
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        
+        // Nombre del archivo con fecha
+        const fecha = new Date().toISOString().split('T')[0];
+        link.setAttribute('download', `informe_completo_${fecha}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    
+    // Sistema de filtrado en tiempo real (tipo Excel)
+    document.addEventListener('DOMContentLoaded', function() {
+        const tabla = document.getElementById('tablaInforme');
+        if (!tabla) return;
+        
+        const filtros = tabla.querySelectorAll('.filtro-columna');
+        const filas = tabla.querySelectorAll('tbody tr');
+        
+        // Función para aplicar todos los filtros
+        function aplicarFiltros() {
+            const valoresFiltro = [];
+            filtros.forEach(input => {
+                valoresFiltro.push(input.value.toLowerCase().trim());
+            });
+            
+            let filasVisibles = 0;
+            
+            filas.forEach(fila => {
+                const celdas = fila.querySelectorAll('td');
+                let mostrar = true;
+                
+                valoresFiltro.forEach((filtro, index) => {
+                    if (filtro && celdas[index]) {
+                        const textoCelda = (celdas[index].innerText || celdas[index].textContent || '').toLowerCase();
+                        if (!textoCelda.includes(filtro)) {
+                            mostrar = false;
+                        }
+                    }
+                });
+                
+                if (mostrar) {
+                    fila.classList.remove('filtrado-oculto');
+                    fila.style.display = '';
+                    filasVisibles++;
+                } else {
+                    fila.classList.add('filtrado-oculto');
+                    fila.style.display = 'none';
+                }
+            });
+            
+            // Actualizar contador de registros visibles
+            const badge = document.querySelector('.stats-badge');
+            if (badge) {
+                const total = filas.length;
+                if (filasVisibles < total) {
+                    badge.innerHTML = `<i class="bi bi-list-ul me-1"></i> ${filasVisibles} de ${total} registro${total !== 1 ? 's' : ''}`;
+                } else {
+                    badge.innerHTML = `<i class="bi bi-list-ul me-1"></i> ${total} registro${total !== 1 ? 's' : ''}`;
+                }
+            }
+        }
+        
+        // Agregar event listeners a todos los filtros
+        filtros.forEach(input => {
+            input.addEventListener('input', aplicarFiltros);
+            input.addEventListener('keyup', aplicarFiltros);
+        });
+        
+        // Botón para limpiar todos los filtros
+        const btnLimpiarFiltros = document.createElement('button');
+        btnLimpiarFiltros.type = 'button';
+        btnLimpiarFiltros.className = 'btn btn-sm btn-outline-secondary ms-2';
+        btnLimpiarFiltros.innerHTML = '<i class="bi bi-x-circle me-1"></i> Limpiar Filtros Tabla';
+        btnLimpiarFiltros.onclick = function() {
+            filtros.forEach(input => input.value = '');
+            aplicarFiltros();
+        };
+        
+        const cardHeader = document.querySelector('.card-header');
+        if (cardHeader) {
+            cardHeader.appendChild(btnLimpiarFiltros);
+        }
+    });
+</script>
+{% endblock %}
+

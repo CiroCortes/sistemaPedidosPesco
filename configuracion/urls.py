@@ -13,5 +13,10 @@ urlpatterns = [
     path('transportes/nuevo/', views.crear_transporte, name='crear_transporte'),
     path('transportes/<int:pk>/editar/', views.editar_transporte, name='editar_transporte'),
     path('transportes/<int:pk>/toggle/', views.toggle_transporte, name='toggle_transporte'),
+    path('tipos-solicitud/', views.lista_tipos_solicitud, name='lista_tipos_solicitud'),
+    path('tipos-solicitud/nuevo/', views.crear_tipo_solicitud, name='crear_tipo_solicitud'),
+    path('tipos-solicitud/<int:pk>/editar/', views.editar_tipo_solicitud, name='editar_tipo_solicitud'),
+    path('tipos-solicitud/<int:pk>/toggle/', views.toggle_tipo_solicitud, name='toggle_tipo_solicitud'),
+    path('tipos-solicitud/<int:pk>/eliminar/', views.eliminar_tipo_solicitud, name='eliminar_tipo_solicitud'),
 ]
 

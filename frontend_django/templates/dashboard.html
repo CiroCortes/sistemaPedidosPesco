@@ -168,6 +168,334 @@
     {% endif %}
 </div>
 
+<!-- Indicadores de Productividad (Solo Admin) -->
+{% if user.es_admin and indicadores %}
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-graph-up-arrow me-2"></i>
+                Indicadores de Productividad
+            </h5>
+            <div class="d-flex gap-2">
+                <!-- Filtro de Período -->
+                <select id="filtroPeriodo" class="form-select form-select-sm" style="width: auto;">
+                    <option value="30" {% if periodo_actual == 30 %}selected{% endif %}>Últimos 30 días</option>
+                    <option value="7" {% if periodo_actual == 7 %}selected{% endif %}>Últimos 7 días</option>
+                    <option value="60" {% if periodo_actual == 60 %}selected{% endif %}>Últimos 60 días</option>
+                </select>
+                <!-- Filtro de Transporte -->
+                <select id="filtroTransporte" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">Todos los transportes</option>
+                    {% for transporte in indicadores.transportes_disponibles %}
+                        <option value="{{ transporte }}" {% if transporte_filtro == transporte %}selected{% endif %}>
+                            {{ transporte }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-sm btn-light" onclick="aplicarFiltros()">
+                    <i class="bi bi-funnel"></i> Aplicar
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Tarjetas de Lead Times -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card border-success">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            <i class="bi bi-clock-history me-1"></i>
+                            Lead Time Preparación
+                        </h6>
+                        <h3 class="mb-1 text-success">
+                            {{ indicadores.lead_time_preparacion.promedio_dias|floatformat:1 }} días
+                        </h3>
+                        <small class="text-muted">
+                            ({{ indicadores.lead_time_preparacion.promedio_horas|floatformat:1 }} horas)
+                        </small>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Mín: {{ indicadores.lead_time_preparacion.min_dias|floatformat:1 }}d | 
+                                Máx: {{ indicadores.lead_time_preparacion.max_dias|floatformat:1 }}d
+                            </small>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">
+                                {{ indicadores.lead_time_preparacion.total_registros }} registros
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card border-info">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            <i class="bi bi-box-seam me-1"></i>
+                            Lead Time Embalaje
+                        </h6>
+                        <h3 class="mb-1 text-info">
+                            {{ indicadores.lead_time_embalaje.promedio_dias|floatformat:1 }} días
+                        </h3>
+                        <small class="text-muted">
+                            ({{ indicadores.lead_time_embalaje.promedio_horas|floatformat:1 }} horas)
+                        </small>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Mín: {{ indicadores.lead_time_embalaje.min_dias|floatformat:1 }}d | 
+                                Máx: {{ indicadores.lead_time_embalaje.max_dias|floatformat:1 }}d
+                            </small>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">
+                                {{ indicadores.lead_time_embalaje.total_registros }} registros
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card border-primary">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            <i class="bi bi-truck me-1"></i>
+                            Lead Time Total
+                        </h6>
+                        <h3 class="mb-1 text-primary">
+                            {{ indicadores.lead_time_total.promedio_dias|floatformat:1 }} días
+                        </h3>
+                        <small class="text-muted">
+                            ({{ indicadores.lead_time_total.promedio_horas|floatformat:1 }} horas)
+                        </small>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Mín: {{ indicadores.lead_time_total.min_dias|floatformat:1 }}d | 
+                                Máx: {{ indicadores.lead_time_total.max_dias|floatformat:1 }}d
+                            </small>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">
+                                {{ indicadores.lead_time_total.total_registros }} registros
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gráfico de Lead Times -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-bar-chart me-2"></i>
+                            Tendencia de Lead Times (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartLeadTimes" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabla de Códigos en Despacho -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-boxes me-2"></i>
+                            Códigos en Despacho (Estado: Listo para Despacho)
+                        </h6>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if indicadores.codigos_en_despacho %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Transporte</th>
+                                        <th>Cantidad de Códigos</th>
+                                        <th>Valor USD</th>
+                                        <th>Días Promedio</th>
+                                        <th>Días Mínimo</th>
+                                        <th>Días Máximo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in indicadores.codigos_en_despacho %}
+                                    <tr>
+                                        <td><strong>{{ item.transporte }}</strong></td>
+                                        <td><span class="badge bg-primary">{{ item.cantidad_codigos }}</span></td>
+                                        <td>${{ item.valor_usd|floatformat:2 }}</td>
+                                        <td>
+                                            <span class="badge {% if item.dias_promedio > 5 %}bg-danger{% elif item.dias_promedio > 3 %}bg-warning{% else %}bg-success{% endif %}">
+                                                {{ item.dias_promedio|floatformat:1 }} días
+                                            </span>
+                                        </td>
+                                        <td>{{ item.dias_min|floatformat:1 }} días</td>
+                                        <td>{{ item.dias_max|floatformat:1 }} días</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="p-4 text-center text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay códigos en despacho para el período y transporte seleccionados.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gráfico de Códigos en Despacho por Transporte -->
+        {% if indicadores.codigos_en_despacho %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-pie-chart me-2"></i>
+                            Distribución de Códigos en Despacho por Transporte
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartCodigosDespacho" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function aplicarFiltros() {
+    const periodo = document.getElementById('filtroPeriodo').value;
+    const transporte = document.getElementById('filtroTransporte').value;
+    const url = new URL(window.location.href);
+    url.searchParams.set('periodo', periodo);
+    if (transporte) {
+        url.searchParams.set('transporte', transporte);
+    } else {
+        url.searchParams.delete('transporte');
+    }
+    window.location.href = url.toString();
+}
+
+// Gráfico de Lead Times
+{% if user.es_admin and indicadores %}
+document.addEventListener('DOMContentLoaded', function() {
+    // Verificar si Chart.js está disponible
+    if (typeof Chart !== 'undefined') {
+        // Datos para el gráfico de Lead Times
+        const ctxLeadTimes = document.getElementById('chartLeadTimes');
+        if (ctxLeadTimes) {
+            new Chart(ctxLeadTimes, {
+                type: 'bar',
+                data: {
+                    labels: ['Preparación', 'Embalaje', 'Total'],
+                    datasets: [{
+                        label: 'Promedio (días)',
+                        data: [
+                            {{ indicadores.lead_time_preparacion.promedio_dias|floatformat:2 }},
+                            {{ indicadores.lead_time_embalaje.promedio_dias|floatformat:2 }},
+                            {{ indicadores.lead_time_total.promedio_dias|floatformat:2 }}
+                        ],
+                        backgroundColor: [
+                            'rgba(40, 167, 69, 0.7)',
+                            'rgba(23, 162, 184, 0.7)',
+                            'rgba(0, 123, 255, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(40, 167, 69, 1)',
+                            'rgba(23, 162, 184, 1)',
+                            'rgba(0, 123, 255, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Días'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Gráfico de Códigos en Despacho
+        const ctxCodigos = document.getElementById('chartCodigosDespacho');
+        if (ctxCodigos) {
+            const transportes = [{% for item in indicadores.codigos_en_despacho %}'{{ item.transporte|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+            const cantidades = [{% for item in indicadores.codigos_en_despacho %}{{ item.cantidad_codigos }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            
+            if (transportes.length > 0 && cantidades.length > 0) {
+                new Chart(ctxCodigos, {
+                type: 'bar',
+                data: {
+                    labels: transportes,
+                    datasets: [{
+                        label: 'Cantidad de Códigos',
+                        data: cantidades,
+                        backgroundColor: 'rgba(0, 123, 255, 0.7)',
+                        borderColor: 'rgba(0, 123, 255, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Cantidad de Códigos'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+                });
+            }
+        }
+    } else {
+        console.warn('Chart.js no está disponible. Los gráficos no se mostrarán.');
+    }
+});
+{% endif %}
+</script>
+{% endif %}
+
 <!-- Tabla de Solicitudes Recientes -->
 {% if listado_solicitudes %}
 <div class="card">

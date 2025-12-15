@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import EstadoWorkflow, TransporteConfig
+from .models import EstadoWorkflow, TransporteConfig, TipoSolicitud
 
 
 class EstadoWorkflowForm(forms.ModelForm):
@@ -62,3 +62,30 @@ class TransporteConfigForm(forms.ModelForm):
         if disable_slug:
             self.fields['slug'].disabled = True
 
+
+class TipoSolicitudForm(forms.ModelForm):
+    class Meta:
+        model = TipoSolicitud
+        fields = [
+            'codigo',
+            'nombre',
+            'descripcion',
+            'orden',
+            'activo',
+            'icono',
+            'color',
+        ]
+        widgets = {
+            'codigo': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ej: PC', 'maxlength': 10}),
+            'nombre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ej: Pedido Cliente'}),
+            'descripcion': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'orden': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'icono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Icono Bootstrap, ej: file-text'}),
+            'color': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Bootstrap color o hex, ej: primary'}),
+        }
+    
+    def __init__(self, *args, disable_codigo=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if disable_codigo:
+            self.fields['codigo'].disabled = True

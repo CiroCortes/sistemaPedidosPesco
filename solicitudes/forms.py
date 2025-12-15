@@ -2,7 +2,7 @@ from django import forms
 from django.forms import inlineformset_factory
 
 from core.models import Bodega
-from configuracion.models import TransporteConfig, EstadoWorkflow
+from configuracion.models import TransporteConfig, EstadoWorkflow, TipoSolicitud
 from .models import Solicitud, SolicitudDetalle
 
 class SolicitudForm(forms.ModelForm):
@@ -32,12 +32,23 @@ class SolicitudForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._load_transportes()
+        self._load_tipos()
 
     def _load_transportes(self):
         choices = [(t.slug, t.nombre) for t in TransporteConfig.activos()]
         if not choices:
             choices = [('PESCO', 'Camión PESCO')]
         self.fields['transporte'].choices = choices
+
+    def _load_tipos(self):
+        """Carga tipos de solicitud desde la base de datos"""
+        tipos = TipoSolicitud.activos()
+        if tipos.exists():
+            choices = [(t.codigo, t.nombre) for t in tipos]
+        else:
+            # Fallback a choices hardcodeados si no hay tipos en BD
+            choices = Solicitud.TIPOS
+        self.fields['tipo'].choices = choices
 
 class SolicitudDetalleForm(forms.ModelForm):
     bodega = forms.ChoiceField(
@@ -119,6 +130,15 @@ class SolicitudEdicionAdminForm(forms.ModelForm):
         if not choices:
             choices = [('PESCO', 'Camión PESCO')]
         self.fields['transporte'].choices = choices
+        
+        # Cargar tipos de solicitud
+        tipos = TipoSolicitud.activos()
+        if tipos.exists():
+            tipo_choices = [(t.codigo, t.nombre) for t in tipos]
+        else:
+            tipo_choices = Solicitud.TIPOS
+        self.fields['tipo'].choices = tipo_choices
+        
         estados = [(e.slug, e.nombre) for e in EstadoWorkflow.activos_para(EstadoWorkflow.TIPO_SOLICITUD)]
         if estados:
             self.fields['estado'].choices = estados

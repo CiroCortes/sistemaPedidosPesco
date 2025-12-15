@@ -45,9 +45,7 @@ urlpatterns = [
     path('inventario/', include('inventario.urls')),  # URLs de inventario
     path('despacho/', include('despacho.urls')),
     path('configuracion/', include('configuracion.urls')),
-    # path('despacho/', include('despacho.urls')),
-    # path('guias/', include('guias.urls')),
-    # path('reportes/', include('reportes.urls')),
+    path('reportes/', include('reportes.urls')),
     
     # API (opcional)
     # path('api/', include('api.urls')),

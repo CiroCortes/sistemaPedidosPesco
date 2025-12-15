@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load formato_filters %}
 
 {% block title %}Cargar Stock SAP{% endblock %}
 
@@ -12,7 +13,7 @@
             <div class="card text-center">
                 <div class="card-body">
                     <h5 class="card-title">📦 Productos</h5>
-                    <p class="display-6">{{ stats.total_productos|default:0|floatformat:0 }}</p>
+                    <p class="display-6">{{ stats.total_productos|default:0|formato_numero }}</p>
                 </div>
             </div>
         </div>
@@ -28,7 +29,7 @@
             <div class="card text-center">
                 <div class="card-body">
                     <h5 class="card-title">📊 Stock Total</h5>
-                    <p class="display-6">{{ stats.total_stock|default:0|floatformat:0 }}</p>
+                    <p class="display-6">{{ stats.total_stock|default:0|formato_numero }}</p>
                 </div>
             </div>
         </div>
@@ -36,7 +37,7 @@
             <div class="card text-center">
                 <div class="card-body">
                     <h5 class="card-title">💰 Valor Total</h5>
-                    <p class="display-6">${{ stats.total_valor|default:0|floatformat:0 }}</p>
+                    <p class="display-6">{{ stats.total_valor|default:0|formato_usd }}</p>
                 </div>
             </div>
         </div>

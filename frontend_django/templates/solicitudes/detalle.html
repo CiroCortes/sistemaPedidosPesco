@@ -70,8 +70,7 @@
             <div class="card-body">
                 <dl class="row mb-0">
                     <dt class="col-sm-4">Fecha</dt>
-                    <dd class="col-sm-8">{{ solicitud.fecha_solicitud|date:"d/m/Y" }} - {{
-                        solicitud.hora_solicitud|time:"H:i" }}</dd>
+                    <dd class="col-sm-8">{{ solicitud.fecha_solicitud|date:"d/m/Y" }} - {{ solicitud.hora_solicitud|time:"H:i" }}</dd>
 
                     <dt class="col-sm-4">Tipo</dt>
                     <dd class="col-sm-8">{{ solicitud.get_tipo_display }}</dd>
