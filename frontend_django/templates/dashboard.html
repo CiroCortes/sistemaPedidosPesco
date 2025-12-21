@@ -293,12 +293,74 @@
                 <div class="card">
                     <div class="card-header">
                         <h6 class="mb-0">
-                            <i class="bi bi-bar-chart me-2"></i>
-                            Tendencia de Lead Times (Últimos {{ periodo_actual }} días)
+                            <i class="bi bi-graph-up me-2"></i>
+                            Tendencia Lead Time Preparación - Evolución Diaria (Últimos {{ periodo_actual }} días)
                         </h6>
                     </div>
                     <div class="card-body">
                         <canvas id="chartLeadTimes" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gráficos de Torta - Estadísticas por Cliente -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-pie-chart me-2"></i>
+                            % Operaciones: Sucursales + OTROS (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartOperacionesCliente" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-pie-chart-fill me-2"></i>
+                            % Valor USD: Sucursales + OTROS (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartUsdCliente" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gráfico de Desglose OTROS -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-pie-chart me-2"></i>
+                            Desglose OTROS - Operaciones (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartOperacionesOtros" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-pie-chart-fill me-2"></i>
+                            Desglose OTROS - Valor USD (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartUsdOtros" height="80"></canvas>
                     </div>
                 </div>
             </div>
@@ -378,6 +440,10 @@
     </div>
 </div>
 
+{% if user.es_admin and indicadores %}
+<script type="application/json" id="tendenciaDiariaData">{% if indicadores.lead_time_preparacion.tendencia_diaria_json %}{{ indicadores.lead_time_preparacion.tendencia_diaria_json|safe }}{% else %}[]{% endif %}</script>
+{% endif %}
+
 <script>
 function aplicarFiltros() {
     const periodo = document.getElementById('filtroPeriodo').value;
@@ -397,55 +463,170 @@ function aplicarFiltros() {
 document.addEventListener('DOMContentLoaded', function() {
     // Verificar si Chart.js está disponible
     if (typeof Chart !== 'undefined') {
-        // Datos para el gráfico de Lead Times
+        // Datos para el gráfico de Tendencia Lead Time Preparación
         const ctxLeadTimes = document.getElementById('chartLeadTimes');
         if (ctxLeadTimes) {
-            new Chart(ctxLeadTimes, {
-                type: 'bar',
+            // Preparar datos diarios desde JSON
+            const tendenciaDiariaJson = document.getElementById('tendenciaDiariaData');
+            let tendenciaDiaria = [];
+            
+            if (tendenciaDiariaJson && tendenciaDiariaJson.textContent) {
+                try {
+                    tendenciaDiaria = JSON.parse(tendenciaDiariaJson.textContent);
+                } catch (e) {
+                    console.error('Error al parsear datos de tendencia diaria:', e);
+                    tendenciaDiaria = [];
+                }
+            }
+            
+            // Verificar que hay datos antes de crear el gráfico
+            if (tendenciaDiaria && tendenciaDiaria.length > 0) {
+                const labels = tendenciaDiaria.map(item => item.fecha_display);
+                // Mantener los valores en horas (sin convertir a días)
+                const promedios = tendenciaDiaria.map(item => parseFloat(item.promedio.toFixed(2)));
+                const minimos = tendenciaDiaria.map(item => parseFloat(item.minimo.toFixed(2)));
+                const maximos = tendenciaDiaria.map(item => parseFloat(item.maximo.toFixed(2)));
+                
+                new Chart(ctxLeadTimes, {
+                type: 'line',
                 data: {
-                    labels: ['Preparación', 'Embalaje', 'Total'],
-                    datasets: [{
-                        label: 'Promedio (días)',
-                        data: [
-                            {{ indicadores.lead_time_preparacion.promedio_dias|floatformat:2 }},
-                            {{ indicadores.lead_time_embalaje.promedio_dias|floatformat:2 }},
-                            {{ indicadores.lead_time_total.promedio_dias|floatformat:2 }}
-                        ],
-                        backgroundColor: [
-                            'rgba(40, 167, 69, 0.7)',
-                            'rgba(23, 162, 184, 0.7)',
-                            'rgba(0, 123, 255, 0.7)'
-                        ],
-                        borderColor: [
-                            'rgba(40, 167, 69, 1)',
-                            'rgba(23, 162, 184, 1)',
-                            'rgba(0, 123, 255, 1)'
-                        ],
-                        borderWidth: 1
-                    }]
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Promedio',
+                            data: promedios,
+                            borderColor: 'rgba(40, 167, 69, 1)',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: 'rgba(40, 167, 69, 1)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        },
+                        {
+                            label: 'Máximo',
+                            data: maximos,
+                            borderColor: 'rgba(220, 53, 69, 0.8)',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: 'rgba(220, 53, 69, 0.8)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 1
+                        },
+                        {
+                            label: 'Mínimo',
+                            data: minimos,
+                            borderColor: 'rgba(23, 162, 184, 0.8)',
+                            backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: 'rgba(23, 162, 184, 0.8)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
                     scales: {
                         y: {
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Días'
+                                text: 'Lead Time (horas)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(1) + 'h';
+                                }
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Fecha'
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
                             }
                         }
                     },
                     plugins: {
                         legend: {
-                            display: false
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15
+                            }
                         },
-                        title: {
-                            display: false
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += parseFloat(context.parsed.y).toFixed(2) + ' horas';
+                                    return label;
+                                }
+                            }
+                        }
+                }
+            }
+            });
+            } else {
+                // No hay datos diarios disponibles
+                new Chart(ctxLeadTimes, {
+                    type: 'line',
+                    data: {
+                        labels: ['Sin datos'],
+                        datasets: [{
+                            label: 'Sin datos disponibles',
+                            data: [0],
+                            borderColor: 'rgba(128, 128, 128, 0.5)',
+                            backgroundColor: 'rgba(128, 128, 128, 0.1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Lead Time (horas)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
         }
         
         // Gráfico de Códigos en Despacho
@@ -488,12 +669,317 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
         }
+        
+        // Gráfico de % Operaciones por Cliente
+        const ctxOperacionesCliente = document.getElementById('chartOperacionesCliente');
+        if (ctxOperacionesCliente) {
+            const clientesOperaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+            const porcentajesOperaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            const operaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}{{ item.operaciones|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            
+            // Validar que todos los arrays tengan la misma longitud
+            const minLength = Math.min(clientesOperaciones.length, porcentajesOperaciones.length, operaciones.length);
+            if (minLength > 0) {
+                // Asegurar que todos los arrays tengan la misma longitud
+                const clientesFinal = clientesOperaciones.slice(0, minLength);
+                const porcentajesFinal = porcentajesOperaciones.slice(0, minLength);
+                const operacionesFinal = operaciones.slice(0, minLength).map(v => v || 0);
+                // Colores limitados para sucursales + OTROS (máximo 5 categorías)
+                const colors = [
+                    'rgba(40, 167, 69, 0.8)',   // Verde - SUC CALAMA
+                    'rgba(0, 123, 255, 0.8)',   // Azul - SUC ANTOFAGASTA
+                    'rgba(220, 53, 69, 0.8)',   // Rojo - SUC PTO MONTT
+                    'rgba(255, 193, 7, 0.8)',   // Amarillo - SUC LOS ANGELES
+                    'rgba(108, 117, 125, 0.8)', // Gris - OTROS
+                ];
+                
+                new Chart(ctxOperacionesCliente, {
+                    type: 'pie',
+                    data: {
+                        labels: clientesFinal,
+                        datasets: [{
+                            label: '% Operaciones',
+                            data: porcentajesFinal,
+                            backgroundColor: colors.slice(0, clientesFinal.length),
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'right',
+                                labels: {
+                                    padding: 15,
+                                    usePointStyle: true
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        const index = context.dataIndex;
+                                        if (index >= 0 && index < porcentajesFinal.length) {
+                                            label += porcentajesFinal[index].toFixed(2) + '%';
+                                            if (operacionesFinal && index < operacionesFinal.length) {
+                                                label += ' (' + operacionesFinal[index] + ' operaciones)';
+                                            } else {
+                                                label += ' (0 operaciones)';
+                                            }
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Gráfico de % Valor USD por Cliente
+        const ctxUsdCliente = document.getElementById('chartUsdCliente');
+        if (ctxUsdCliente) {
+            const clientesUsd = [{% for item in indicadores.porcentajes_usd_cliente %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+            const porcentajesUsd = [{% for item in indicadores.porcentajes_usd_cliente %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            const valoresUsd = [{% for item in indicadores.porcentajes_usd_cliente %}{{ item.valor_usd|default:0|floatformat:2 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            
+            // Validar que todos los arrays tengan la misma longitud
+            const minLengthUsd = Math.min(clientesUsd.length, porcentajesUsd.length, valoresUsd.length);
+            if (minLengthUsd > 0) {
+                // Asegurar que todos los arrays tengan la misma longitud
+                const clientesUsdFinal = clientesUsd.slice(0, minLengthUsd);
+                const porcentajesUsdFinal = porcentajesUsd.slice(0, minLengthUsd);
+                const valoresUsdFinal = valoresUsd.slice(0, minLengthUsd).map(v => parseFloat(v) || 0);
+                // Colores limitados para sucursales + OTROS
+                const colorsUsd = [
+                    'rgba(40, 167, 69, 0.8)',   // Verde - SUC CALAMA
+                    'rgba(0, 123, 255, 0.8)',   // Azul - SUC ANTOFAGASTA
+                    'rgba(220, 53, 69, 0.8)',   // Rojo - SUC PTO MONTT
+                    'rgba(255, 193, 7, 0.8)',   // Amarillo - SUC LOS ANGELES
+                    'rgba(108, 117, 125, 0.8)', // Gris - OTROS
+                    'rgba(128, 128, 128, 0.6)', // Gris claro (para sin valor)
+                ];
+                
+                new Chart(ctxUsdCliente, {
+                    type: 'pie',
+                    data: {
+                        labels: clientesUsdFinal,
+                        datasets: [{
+                            label: '% Valor USD',
+                            data: porcentajesUsdFinal,
+                            backgroundColor: colorsUsd.slice(0, clientesUsdFinal.length),
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'right',
+                                labels: {
+                                    padding: 15,
+                                    usePointStyle: true
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        const index = context.dataIndex;
+                                        if (index >= 0 && index < porcentajesUsdFinal.length) {
+                                            label += porcentajesUsdFinal[index].toFixed(2) + '%';
+                                            if (valoresUsdFinal && index < valoresUsdFinal.length && valoresUsdFinal[index] > 0) {
+                                                label += ' ($' + valoresUsdFinal[index].toLocaleString('es-CL', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD)';
+                                            } else {
+                                                label += ' (Sin valor USD)';
+                                            }
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Gráfico de Desglose OTROS - Operaciones
+        const ctxOperacionesOtros = document.getElementById('chartOperacionesOtros');
+        if (ctxOperacionesOtros) {
+            {% if indicadores.porcentajes_operaciones_otros %}
+            const clientesOtros = [{% for item in indicadores.porcentajes_operaciones_otros %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+            const porcentajesOtros = [{% for item in indicadores.porcentajes_operaciones_otros %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            const operacionesOtros = [{% for item in indicadores.porcentajes_operaciones_otros %}{{ item.operaciones|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            {% else %}
+            const clientesOtros = [];
+            const porcentajesOtros = [];
+            const operacionesOtros = [];
+            {% endif %}
+            
+            // Validar que todos los arrays tengan la misma longitud
+            const minLengthOtros = Math.min(clientesOtros.length, porcentajesOtros.length, operacionesOtros.length);
+            if (minLengthOtros > 0) {
+                // Asegurar que todos los arrays tengan la misma longitud
+                const clientesOtrosFinal = clientesOtros.slice(0, minLengthOtros);
+                const porcentajesOtrosFinal = porcentajesOtros.slice(0, minLengthOtros);
+                const operacionesOtrosFinal = operacionesOtros.slice(0, minLengthOtros).map(v => v || 0);
+                
+                // Colores para desglose de OTROS (más variados ya que pueden ser muchos clientes)
+                const colorsOtros = [
+                    'rgba(40, 167, 69, 0.8)',   'rgba(0, 123, 255, 0.8)',   'rgba(220, 53, 69, 0.8)',
+                    'rgba(255, 193, 7, 0.8)',   'rgba(23, 162, 184, 0.8)',  'rgba(108, 117, 125, 0.8)',
+                    'rgba(40, 167, 69, 0.6)',   'rgba(0, 123, 255, 0.6)',   'rgba(220, 53, 69, 0.6)',
+                    'rgba(255, 193, 7, 0.6)',   'rgba(23, 162, 184, 0.6)',  'rgba(108, 117, 125, 0.6)',
+                ];
+                
+                new Chart(ctxOperacionesOtros, {
+                    type: 'pie',
+                    data: {
+                        labels: clientesOtrosFinal,
+                        datasets: [{
+                            label: '% Operaciones OTROS',
+                            data: porcentajesOtrosFinal,
+                            backgroundColor: colorsOtros.slice(0, clientesOtrosFinal.length),
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'right',
+                                labels: {
+                                    padding: 15,
+                                    usePointStyle: true
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        const index = context.dataIndex;
+                                        if (index >= 0 && index < porcentajesOtrosFinal.length) {
+                                            label += porcentajesOtrosFinal[index].toFixed(2) + '%';
+                                            if (operacionesOtrosFinal && index < operacionesOtrosFinal.length) {
+                                                label += ' (' + operacionesOtrosFinal[index] + ' operaciones)';
+                                            } else {
+                                                label += ' (0 operaciones)';
+                                            }
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Gráfico de Desglose OTROS - Valor USD
+        const ctxUsdOtros = document.getElementById('chartUsdOtros');
+        if (ctxUsdOtros) {
+            {% if indicadores.porcentajes_usd_otros %}
+            const clientesUsdOtros = [{% for item in indicadores.porcentajes_usd_otros %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+            const porcentajesUsdOtros = [{% for item in indicadores.porcentajes_usd_otros %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            const valoresUsdOtros = [{% for item in indicadores.porcentajes_usd_otros %}{{ item.valor_usd|default:0|floatformat:2 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            {% else %}
+            const clientesUsdOtros = [];
+            const porcentajesUsdOtros = [];
+            const valoresUsdOtros = [];
+            {% endif %}
+            
+            // Validar que todos los arrays tengan la misma longitud
+            const minLengthUsdOtros = Math.min(clientesUsdOtros.length, porcentajesUsdOtros.length, valoresUsdOtros.length);
+            if (minLengthUsdOtros > 0) {
+                // Asegurar que todos los arrays tengan la misma longitud
+                const clientesUsdOtrosFinal = clientesUsdOtros.slice(0, minLengthUsdOtros);
+                const porcentajesUsdOtrosFinal = porcentajesUsdOtros.slice(0, minLengthUsdOtros);
+                const valoresUsdOtrosFinal = valoresUsdOtros.slice(0, minLengthUsdOtros).map(v => parseFloat(v) || 0);
+                // Colores para desglose de OTROS USD
+                const colorsUsdOtros = [
+                    'rgba(40, 167, 69, 0.8)',   'rgba(0, 123, 255, 0.8)',   'rgba(220, 53, 69, 0.8)',
+                    'rgba(255, 193, 7, 0.8)',   'rgba(23, 162, 184, 0.8)',  'rgba(108, 117, 125, 0.8)',
+                    'rgba(40, 167, 69, 0.6)',   'rgba(0, 123, 255, 0.6)',   'rgba(220, 53, 69, 0.6)',
+                    'rgba(255, 193, 7, 0.6)',   'rgba(23, 162, 184, 0.6)',  'rgba(108, 117, 125, 0.6)',
+                    'rgba(128, 128, 128, 0.6)', // Gris claro (para sin valor)
+                ];
+                
+                new Chart(ctxUsdOtros, {
+                    type: 'pie',
+                    data: {
+                        labels: clientesUsdOtrosFinal,
+                        datasets: [{
+                            label: '% Valor USD OTROS',
+                            data: porcentajesUsdOtrosFinal,
+                            backgroundColor: colorsUsdOtros.slice(0, clientesUsdOtrosFinal.length),
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'right',
+                                labels: {
+                                    padding: 15,
+                                    usePointStyle: true
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        const index = context.dataIndex;
+                                        if (index >= 0 && index < porcentajesUsdOtrosFinal.length) {
+                                            label += porcentajesUsdOtrosFinal[index].toFixed(2) + '%';
+                                            if (valoresUsdOtrosFinal && index < valoresUsdOtrosFinal.length && valoresUsdOtrosFinal[index] > 0) {
+                                                label += ' ($' + valoresUsdOtrosFinal[index].toLocaleString('es-CL', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD)';
+                                            } else {
+                                                label += ' (Sin valor USD)';
+                                            }
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
     } else {
         console.warn('Chart.js no está disponible. Los gráficos no se mostrarán.');
     }
 });
-{% endif %}
 </script>
+{% endif %}
 {% endif %}
 
 <!-- Tabla de Solicitudes Recientes -->

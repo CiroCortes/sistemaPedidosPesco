@@ -1,0 +1,357 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Emisión de Guías - Sistema PESCO{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="container-fluid px-0">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1 text-gray-800">
+                <i class="bi bi-receipt me-2"></i>
+                Emisión de Guías SAP
+            </h1>
+            <p class="text-muted mb-0">Seleccione solicitudes y genere el detalle en texto plano para copiar.</p>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body p-3">
+            <form method="get" class="row g-3 align-items-end" id="filtrosForm">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">Búsqueda</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0">
+                            <i class="bi bi-search text-muted"></i>
+                        </span>
+                        <input type="text" name="q" class="form-control border-start-0"
+                            placeholder="ID, cliente, pedido, OT, ST..." value="{{ q }}">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Estado</label>
+                    <select name="estado" class="form-select">
+                        <option value="">Todos los estados</option>
+                        {% for estado in estados_disponibles %}
+                        <option value="{{ estado }}" {% if estado_filtro == estado %}selected{% endif %}>
+                            {{ estado|title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Cliente</label>
+                    <select name="cliente" class="form-select">
+                        <option value="">Todos los clientes</option>
+                        {% for cliente in clientes %}
+                        <option value="{{ cliente }}" {% if cliente_filtro == cliente %}selected{% endif %}>
+                            {{ cliente }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-funnel me-1"></i> Filtrar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Selección y Generación -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-list-check me-2"></i>
+                    Solicitudes Disponibles
+                </h6>
+                <div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="seleccionarTodos">
+                        <i class="bi bi-check-all me-1"></i> Seleccionar Todos
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="deseleccionarTodos">
+                        <i class="bi bi-x-square me-1"></i> Deseleccionar
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="generarDetalle">
+                        <i class="bi bi-file-text me-1"></i> Generar Detalle
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th width="40">
+                                <input type="checkbox" id="checkAll" class="form-check-input">
+                            </th>
+                            <th>ID</th>
+                            <th>Cliente</th>
+                            <th>Pedido/OF</th>
+                            <th>OT</th>
+                            <th>ST</th>
+                            <th>Estado</th>
+                            <th>Productos</th>
+                            <th>Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for solicitud in solicitudes %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" name="solicitud_id" value="{{ solicitud.id }}" 
+                                    class="form-check-input solicitud-checkbox">
+                            </td>
+                            <td><strong>#{{ solicitud.id }}</strong></td>
+                            <td>{{ solicitud.cliente|truncatewords:5 }}</td>
+                            <td>{{ solicitud.numero_pedido|default:"-" }}</td>
+                            <td>{{ solicitud.numero_ot|default:"-" }}</td>
+                            <td>{{ solicitud.numero_st|default:"-" }}</td>
+                            <td>
+                                <span class="badge bg-info">{{ solicitud.estado|title }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">{{ solicitud.detalles.count }} producto(s)</span>
+                            </td>
+                            <td>{{ solicitud.fecha_solicitud|date:"d/m/Y" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox me-2"></i>
+                                No se encontraron solicitudes con los filtros aplicados.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if solicitudes.has_other_pages %}
+        <div class="card-footer bg-light">
+            <nav aria-label="Paginación">
+                <ul class="pagination pagination-sm mb-0 justify-content-center">
+                    {% if solicitudes.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1{% if q %}&q={{ q }}{% endif %}{% if estado_filtro %}&estado={{ estado_filtro }}{% endif %}{% if cliente_filtro %}&cliente={{ cliente_filtro }}{% endif %}">Primera</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ solicitudes.previous_page_number }}{% if q %}&q={{ q }}{% endif %}{% if estado_filtro %}&estado={{ estado_filtro }}{% endif %}{% if cliente_filtro %}&cliente={{ cliente_filtro }}{% endif %}">Anterior</a>
+                    </li>
+                    {% endif %}
+                    <li class="page-item active">
+                        <span class="page-link">
+                            Página {{ solicitudes.number }} de {{ solicitudes.paginator.num_pages }}
+                        </span>
+                    </li>
+                    {% if solicitudes.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ solicitudes.next_page_number }}{% if q %}&q={{ q }}{% endif %}{% if estado_filtro %}&estado={{ estado_filtro }}{% endif %}{% if cliente_filtro %}&cliente={{ cliente_filtro }}{% endif %}">Siguiente</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ solicitudes.paginator.num_pages }}{% if q %}&q={{ q }}{% endif %}{% if estado_filtro %}&estado={{ estado_filtro }}{% endif %}{% if cliente_filtro %}&cliente={{ cliente_filtro }}{% endif %}">Última</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Recuadro de Texto Plano -->
+    <div class="card border-0 shadow-sm" id="resultadoCard" style="display: none;">
+        <div class="card-header bg-success text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-file-text me-2"></i>
+                    Detalle de Guía Generado
+                </h6>
+                <button type="button" class="btn btn-sm btn-light" id="copiarTexto">
+                    <i class="bi bi-clipboard me-1"></i> Copiar
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-3">
+            <div class="alert alert-info mb-3">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>Instrucciones:</strong> El texto generado está listo para copiar y pegar en SAP.
+                Haga clic en "Copiar" o seleccione todo el texto manualmente.
+            </div>
+            <textarea id="textoPlano" class="form-control font-monospace" 
+                rows="20" readonly style="font-size: 0.85rem; white-space: pre; overflow-wrap: normal; overflow-x: auto;"></textarea>
+            <div class="mt-3 text-muted small">
+                <i class="bi bi-check-circle me-1"></i>
+                <span id="resumenDetalle"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const checkAll = document.getElementById('checkAll');
+    const checkboxes = document.querySelectorAll('.solicitud-checkbox');
+    const seleccionarTodos = document.getElementById('seleccionarTodos');
+    const deseleccionarTodos = document.getElementById('deseleccionarTodos');
+    const generarDetalle = document.getElementById('generarDetalle');
+    const copiarTexto = document.getElementById('copiarTexto');
+    const textoPlano = document.getElementById('textoPlano');
+    const resultadoCard = document.getElementById('resultadoCard');
+    const resumenDetalle = document.getElementById('resumenDetalle');
+
+    // Checkbox "Seleccionar todos"
+    if (checkAll) {
+        checkAll.addEventListener('change', function() {
+            checkboxes.forEach(cb => cb.checked = this.checked);
+        });
+    }
+
+    // Botón "Seleccionar Todos"
+    if (seleccionarTodos) {
+        seleccionarTodos.addEventListener('click', function() {
+            checkboxes.forEach(cb => cb.checked = true);
+            if (checkAll) checkAll.checked = true;
+        });
+    }
+
+    // Botón "Deseleccionar"
+    if (deseleccionarTodos) {
+        deseleccionarTodos.addEventListener('click', function() {
+            checkboxes.forEach(cb => cb.checked = false);
+            if (checkAll) checkAll.checked = false;
+        });
+    }
+
+    // Actualizar checkbox "Seleccionar todos" cuando cambian los individuales
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', function() {
+            const todosMarcados = Array.from(checkboxes).every(c => c.checked);
+            if (checkAll) checkAll.checked = todosMarcados;
+        });
+    });
+
+    // Generar detalle
+    if (generarDetalle) {
+        generarDetalle.addEventListener('click', function() {
+            const seleccionados = Array.from(checkboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+
+            if (seleccionados.length === 0) {
+                alert('Por favor, seleccione al menos una solicitud.');
+                return;
+            }
+
+            // Deshabilitar botón y mostrar loading
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generando...';
+
+            // Enviar solicitud
+            const formData = new FormData();
+            seleccionados.forEach(id => formData.append('solicitud_ids[]', id));
+
+            // Obtener CSRF token del formulario o cookies
+            function getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
+            }
+            
+            // Intentar obtener el token del input hidden primero
+            let csrftoken = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (csrftoken) {
+                csrftoken = csrftoken.value;
+            } else {
+                // Si no está en el DOM, obtenerlo de las cookies
+                csrftoken = getCookie('csrftoken');
+            }
+            
+            if (!csrftoken) {
+                console.error('No se pudo obtener el token CSRF');
+                alert('Error de seguridad: No se pudo obtener el token CSRF. Por favor, recarga la página.');
+                return;
+            }
+
+            fetch('{% url "guias:generar_detalle_guia" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(async response => {
+                const contentType = response.headers.get('content-type');
+                
+                // Si la respuesta no es JSON, intentar leer como texto para debug
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Respuesta no es JSON:', text.substring(0, 500));
+                    throw new Error(`El servidor devolvió HTML en lugar de JSON. Status: ${response.status}. ¿Estás autenticado?`);
+                }
+                
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || `Error ${response.status}: ${response.statusText}`);
+                }
+                
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    textoPlano.value = data.texto;
+                    resumenDetalle.textContent = 
+                        `Generado: ${data.total_solicitudes} solicitud(es), ${data.total_productos} producto(s)`;
+                    resultadoCard.style.display = 'block';
+                    // Scroll al resultado
+                    resultadoCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo generar el detalle'));
+                }
+            })
+            .catch(error => {
+                console.error('Error completo:', error);
+                alert('Error: ' + (error.message || 'Error al generar el detalle. Por favor, intente nuevamente.'));
+            })
+            .finally(() => {
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-file-text me-1"></i> Generar Detalle';
+            });
+        });
+    }
+
+    // Copiar texto
+    if (copiarTexto) {
+        copiarTexto.addEventListener('click', function() {
+            textoPlano.select();
+            textoPlano.setSelectionRange(0, 99999); // Para móviles
+            try {
+                document.execCommand('copy');
+                this.innerHTML = '<i class="bi bi-check me-1"></i> ¡Copiado!';
+                setTimeout(() => {
+                    this.innerHTML = '<i class="bi bi-clipboard me-1"></i> Copiar';
+                }, 2000);
+            } catch (err) {
+                alert('No se pudo copiar. Por favor, seleccione el texto manualmente.');
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
+

@@ -113,12 +113,29 @@ def dashboard(request):
         })
     
     elif user.es_bodega():
-        # Bodega solo ve pendientes - Optimizado: 1 query en lugar de 3
-        solicitudes_pendientes = list(
-            Solicitud.objects
-            .filter(estado='pendiente')
-            .select_related('solicitante')[:15]
-        )
+        # Bodega solo ve pendientes de SUS bodegas asignadas
+        from django.db.models import Exists, OuterRef
+        from solicitudes.models import SolicitudDetalle
+        
+        bodegas_usuario = user.get_bodegas_codigos()
+        if bodegas_usuario:
+            # Filtrar solo solicitudes que tienen detalles con bodegas asignadas al usuario
+            detalles_pendientes = SolicitudDetalle.objects.filter(
+                solicitud=OuterRef('pk'),
+                bodega__in=bodegas_usuario,
+                estado_bodega='pendiente'
+            ).exclude(bodega='013')  # Bodega 013 es solo despacho
+            
+            solicitudes_pendientes = list(
+                Solicitud.objects
+                .filter(estado='pendiente')
+                .annotate(tiene_pendientes=Exists(detalles_pendientes))
+                .filter(tiene_pendientes=True)
+                .select_related('solicitante')[:15]
+            )
+        else:
+            # Si no tiene bodegas asignadas, no ver nada
+            solicitudes_pendientes = []
         
         urgentes = sum(1 for s in solicitudes_pendientes if s.urgente)
         
@@ -225,14 +242,217 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     ).select_related('solicitud')
     
     lead_times_prep = []
+    # Diccionario para agrupar lead times por día (fecha de preparación)
+    lead_times_por_dia = {}
+    
     for detalle in detalles_preparados:
         if detalle.fecha_preparacion and detalle.solicitud.created_at:
             delta = detalle.fecha_preparacion - detalle.solicitud.created_at
-            lead_times_prep.append(delta.total_seconds() / 3600)  # En horas
+            horas = delta.total_seconds() / 3600
+            lead_times_prep.append(horas)
+            
+            # Agrupar por día (usar fecha de preparación como referencia)
+            fecha_dia = detalle.fecha_preparacion.date()
+            if fecha_dia not in lead_times_por_dia:
+                lead_times_por_dia[fecha_dia] = []
+            lead_times_por_dia[fecha_dia].append(horas)
     
     lt_prep_promedio = sum(lead_times_prep) / len(lead_times_prep) if lead_times_prep else 0
     lt_prep_min = min(lead_times_prep) if lead_times_prep else 0
     lt_prep_max = max(lead_times_prep) if lead_times_prep else 0
+    
+    # Calcular datos diarios para el gráfico de tendencia
+    # Ordenar por fecha y calcular promedio, mínimo y máximo por día
+    tendencia_diaria_prep = []
+    for fecha in sorted(lead_times_por_dia.keys()):
+        valores_dia = lead_times_por_dia[fecha]
+        tendencia_diaria_prep.append({
+            'fecha': fecha.strftime('%Y-%m-%d'),
+            'fecha_display': fecha.strftime('%d/%m'),
+            'promedio': float(sum(valores_dia) / len(valores_dia)),
+            'minimo': float(min(valores_dia)),
+            'maximo': float(max(valores_dia)),
+            'cantidad': len(valores_dia)
+        })
+    
+    # Serializar a JSON string para el template (siempre una lista, aunque esté vacía)
+    tendencia_diaria_json = json.dumps(tendencia_diaria_prep, ensure_ascii=False) if tendencia_diaria_prep else '[]'
+    
+    # 1.5. ESTADÍSTICAS POR CLIENTE
+    # Agrupar solicitudes por cliente para calcular porcentajes
+    from collections import defaultdict
+    
+    # Definir sucursales con sus variaciones posibles
+    sucursales_map = {
+        'SUC CALAMA': ['SUC CALAMA', 'SUCURSAL CALAMA', 'SUC CALAMA', 'Suc Calama', 'suc calama'],
+        'SUC ANTOFAGASTA': ['SUC ANTOFAGASTA', 'SUCURSAL ANTOFAGASTA', 'SUC ANTOFA', 'Suc Antofagasta', 'suc antofagasta', 'sucursal antofagasta'],
+        'SUC PTO MONTT': ['SUC PTO MONTT', 'SUC PTO. MONTT', 'SUC PUERTO MONTT', 'SUCURSAL PTO MONTT', 'Suc Pto Montt', 'suc pto montt'],
+        'SUC LOS ANGELES': ['SUC LOS ANGELES', 'SUCURSAL LOS ANGELES', 'SUC LOS ÁNGELES', 'Suc Los Angeles', 'suc los angeles'],
+    }
+    
+    def normalizar_cliente(cliente):
+        """Normaliza el nombre del cliente para identificar sucursales"""
+        cliente_upper = cliente.upper().strip()
+        # Buscar coincidencias para cada sucursal
+        for sucursal_norm, variaciones in sucursales_map.items():
+            for variacion in variaciones:
+                if variacion.upper() in cliente_upper or cliente_upper in variacion.upper():
+                    return sucursal_norm
+        return None
+    
+    # Estadísticas de operaciones por cliente (sin agrupar)
+    solicitudes_por_cliente = solicitudes_base.values('cliente').annotate(
+        total_operaciones=Count('id')
+    ).order_by('-total_operaciones')
+    
+    total_operaciones = solicitudes_base.count()
+    
+    # Agrupar por sucursales y OTROS
+    operaciones_sucursales = defaultdict(int)
+    operaciones_otros = []
+    
+    for item in solicitudes_por_cliente:
+        cliente = item['cliente']
+        operaciones = item['total_operaciones']
+        sucursal_norm = normalizar_cliente(cliente)
+        
+        if sucursal_norm:
+            operaciones_sucursales[sucursal_norm] += operaciones
+        else:
+            porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
+            operaciones_otros.append({
+                'cliente': cliente,
+                'operaciones': operaciones,
+                'porcentaje': round(porcentaje, 2)
+            })
+    
+    # Crear lista de porcentajes agrupados (sucursales + OTROS)
+    porcentajes_operaciones = []
+    total_otros = sum(item['operaciones'] for item in operaciones_otros)
+    
+    # Agregar sucursales
+    for sucursal, operaciones in sorted(operaciones_sucursales.items(), key=lambda x: x[1], reverse=True):
+        porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
+        porcentajes_operaciones.append({
+            'cliente': sucursal,
+            'operaciones': operaciones,
+            'porcentaje': round(porcentaje, 2)
+        })
+    
+    # Agregar OTROS
+    if total_otros > 0:
+        porcentaje_otros = (total_otros / total_operaciones * 100) if total_operaciones > 0 else 0
+        porcentajes_operaciones.append({
+            'cliente': 'OTROS',
+            'operaciones': total_otros,
+            'porcentaje': round(porcentaje_otros, 2)
+        })
+    
+    # Estadísticas de valor USD por cliente
+    # Obtener todos los detalles del período con sus códigos
+    detalles_periodo = SolicitudDetalle.objects.filter(
+        solicitud__in=solicitudes_base
+    ).select_related('solicitud')
+    
+    # Recopilar códigos únicos para batch query de precios
+    codigos_clientes = set()
+    detalles_por_cliente = defaultdict(list)
+    
+    for detalle in detalles_periodo:
+        codigos_clientes.add(detalle.codigo)
+        detalles_por_cliente[detalle.solicitud.cliente].append(detalle)
+    
+    # Batch query para obtener precios
+    precios_cache_clientes = {}
+    if codigos_clientes:
+        stocks = Stock.objects.filter(codigo__in=codigos_clientes).values('codigo', 'precio')
+        for stock in stocks:
+            if stock['codigo'] not in precios_cache_clientes and stock.get('precio'):
+                precios_cache_clientes[stock['codigo']] = stock['precio']
+    
+    # Calcular valor USD por cliente
+    valores_por_cliente = defaultdict(lambda: Decimal('0.00'))
+    valores_otros_detalle = defaultdict(lambda: Decimal('0.00'))
+    clientes_sin_valor = set()
+    clientes_otros_sin_valor = set()
+    
+    for cliente, detalles in detalles_por_cliente.items():
+        tiene_valor = False
+        valor_cliente = Decimal('0.00')
+        
+        for detalle in detalles:
+            precio = precios_cache_clientes.get(detalle.codigo)
+            if precio:
+                valor = Decimal(str(precio)) * detalle.cantidad
+                valor_cliente += valor
+                tiene_valor = True
+        
+        sucursal_norm = normalizar_cliente(cliente)
+        
+        if sucursal_norm:
+            # Es una sucursal
+            valores_por_cliente[sucursal_norm] += valor_cliente
+            if not tiene_valor:
+                clientes_sin_valor.add(cliente)
+        else:
+            # Es un cliente OTROS
+            valores_otros_detalle[cliente] = valor_cliente
+            if not tiene_valor:
+                clientes_otros_sin_valor.add(cliente)
+    
+    # Calcular total USD y porcentajes agrupados
+    total_usd = sum(valores_por_cliente.values()) + sum(valores_otros_detalle.values())
+    porcentajes_usd = []
+    
+    # Agregar sucursales con valor USD
+    for sucursal, valor_usd in sorted(valores_por_cliente.items(), key=lambda x: x[1], reverse=True):
+        if valor_usd > 0:
+            porcentaje = (float(valor_usd) / float(total_usd) * 100) if total_usd > 0 else 0
+            porcentajes_usd.append({
+                'cliente': sucursal,
+                'valor_usd': float(valor_usd),
+                'porcentaje': round(porcentaje, 2)
+            })
+    
+    # Agregar OTROS (suma de todos los clientes no sucursales)
+    total_otros_usd = sum(valores_otros_detalle.values())
+    if total_otros_usd > 0:
+        porcentaje_otros = (float(total_otros_usd) / float(total_usd) * 100) if total_usd > 0 else 0
+        porcentajes_usd.append({
+            'cliente': 'OTROS',
+            'valor_usd': float(total_otros_usd),
+            'porcentaje': round(porcentaje_otros, 2)
+        })
+    
+    # Agregar clientes sin valor USD (como RRHH, sucursales internas, etc.)
+    todos_sin_valor = clientes_sin_valor | clientes_otros_sin_valor
+    if todos_sin_valor:
+        porcentajes_usd.append({
+            'cliente': 'Sin valor USD (RRHH, internos, etc.)',
+            'valor_usd': 0.0,
+            'porcentaje': 0.0,
+            'cantidad_clientes': len(todos_sin_valor)
+        })
+    
+    # Crear desglose detallado de OTROS (para el tercer gráfico)
+    porcentajes_otros_detalle = []
+    for cliente, valor_usd in sorted(valores_otros_detalle.items(), key=lambda x: x[1], reverse=True):
+        if valor_usd > 0:
+            porcentaje = (float(valor_usd) / float(total_otros_usd) * 100) if total_otros_usd > 0 else 0
+            porcentajes_otros_detalle.append({
+                'cliente': cliente,
+                'valor_usd': float(valor_usd),
+                'porcentaje': round(porcentaje, 2)
+            })
+    
+    # Agregar clientes OTROS sin valor USD al desglose
+    if clientes_otros_sin_valor:
+        porcentajes_otros_detalle.append({
+            'cliente': 'Sin valor USD (RRHH, internos, etc.)',
+            'valor_usd': 0.0,
+            'porcentaje': 0.0,
+            'cantidad_clientes': len(clientes_otros_sin_valor)
+        })
     
     # 2. LEAD TIME DE EMBALAJE
     # Desde que solicitud cambió a 'en_despacho' hasta fecha_embalaje del bulto
@@ -400,7 +620,9 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'min_dias': lt_prep_min / 24,
             'max_horas': lt_prep_max,
             'max_dias': lt_prep_max / 24,
-            'total_registros': len(lead_times_prep)
+            'total_registros': len(lead_times_prep),
+            'tendencia_diaria': tendencia_diaria_prep,
+            'tendencia_diaria_json': tendencia_diaria_json
         },
         'lead_time_embalaje': {
             'promedio_horas': lt_emb_promedio,
@@ -422,7 +644,13 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         },
         'codigos_en_despacho': codigos_despacho,
         'transportes_disponibles': transportes_disponibles,
-        'periodo_dias': periodo_dias
+        'periodo_dias': periodo_dias,
+        # Estadísticas por cliente (agrupadas: sucursales + OTROS)
+        'porcentajes_operaciones_cliente': porcentajes_operaciones,
+        'porcentajes_usd_cliente': porcentajes_usd,
+        # Desglose detallado de OTROS
+        'porcentajes_operaciones_otros': operaciones_otros,
+        'porcentajes_usd_otros': porcentajes_otros_detalle
     }
     
     # Guardar en caché por 5 minutos (300 segundos)

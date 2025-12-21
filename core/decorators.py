@@ -32,6 +32,15 @@ def role_required(allowed_roles):
             if request.user.rol in allowed_roles:
                 return view_func(request, *args, **kwargs)
             
+            # Si es una petición AJAX/JSON, devolver JSON
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/json' or request.path.endswith('/generar/'):
+                from django.http import JsonResponse
+                return JsonResponse({
+                    'error': 'No tienes permisos para acceder a esta página',
+                    'rol_actual': request.user.get_rol_display(),
+                    'roles_permitidos': ', '.join(allowed_roles)
+                }, status=403)
+            
             messages.error(request, 'No tienes permisos para acceder a esta página')
             return HttpResponseForbidden(
                 "<h1>403 Prohibido</h1>"

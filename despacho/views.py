@@ -162,11 +162,16 @@ def crear_bulto(request):
         return redirect('despacho:gestion')
 
     # Verificar que todos los detalles estén preparados (con stock transferido)
+    # EXCEPCIÓN: Si la solicitud no afecta stock (despacho directo), permitir crear bulto sin preparación
     detalles_no_preparados = [d for d in detalles if d.estado_bodega != 'preparado']
     if detalles_no_preparados:
-        mensajes = ', '.join(f'{d.codigo} (Solicitud #{d.solicitud_id})' for d in detalles_no_preparados[:5])
-        messages.error(request, f'Estos productos no han sido preparados por bodega: {mensajes}')
-        return redirect('despacho:gestion')
+        # Verificar si todas las solicitudes no afectan stock
+        # Si todas las solicitudes no afectan stock, permitir continuar
+        todas_no_afectan_stock = all(not d.solicitud.afecta_stock for d in detalles_no_preparados)
+        if not todas_no_afectan_stock:
+            mensajes = ', '.join(f'{d.codigo} (Solicitud #{d.solicitud_id})' for d in detalles_no_preparados[:5])
+            messages.error(request, f'Estos productos no han sido preparados por bodega: {mensajes}')
+            return redirect('despacho:gestion')
 
     # Validar que todos los detalles pertenezcan a la misma solicitud
     # Un bulto solo puede estar asociado a una solicitud

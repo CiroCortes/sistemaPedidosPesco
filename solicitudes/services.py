@@ -272,12 +272,118 @@ def crear_solicitud_desde_payload(
     if not productos_validos:
         raise SolicitudServiceError("Debe haber al menos un producto en 'productos'.")
 
-    primera = productos_validos[0]
+    # ⚠️ VALIDACIÓN DE STOCK: Separar códigos con stock de los que no tienen
+    from bodega.models import Stock
+    
+    productos_con_stock = []
+    productos_sin_stock = []
+    
+    for prod in productos_validos:
+        codigo = prod["codigo"]
+        cantidad = prod["cantidad"]
+        bodega_asignada = prod.get("bodega", "").strip()
+        
+        # Bodega 013 no requiere validación de stock - siempre permitir
+        if bodega_asignada == "013":
+            productos_con_stock.append(prod)
+            continue
+        
+        # Si no hay bodega asignada, no tiene stock
+        if not bodega_asignada:
+            productos_sin_stock.append({
+                'codigo': codigo,
+                'descripcion': prod.get('descripcion', ''),
+                'cantidad': cantidad,
+                'bodega': 'Sin asignar',
+                'problema': 'No tiene bodega asignada',
+                'stock_disponible': None
+            })
+            continue
+        
+        # Validar stock en la bodega asignada
+        stock_bodega = Stock.objects.filter(
+            codigo=codigo,
+            bodega=bodega_asignada
+        ).first()
+        
+        if not stock_bodega:
+            productos_sin_stock.append({
+                'codigo': codigo,
+                'descripcion': prod.get('descripcion', ''),
+                'cantidad': cantidad,
+                'bodega': bodega_asignada,
+                'problema': f'El código no existe en bodega {bodega_asignada}',
+                'stock_disponible': 0
+            })
+        elif stock_bodega.stock_disponible < cantidad:
+            faltante = cantidad - stock_bodega.stock_disponible
+            productos_sin_stock.append({
+                'codigo': codigo,
+                'descripcion': prod.get('descripcion', ''),
+                'cantidad': cantidad,
+                'bodega': bodega_asignada,
+                'problema': f'Stock insuficiente: tiene {stock_bodega.stock_disponible}, se solicitan {cantidad}',
+                'stock_disponible': stock_bodega.stock_disponible,
+                'faltante': faltante
+            })
+        else:
+            # Stock suficiente, agregar a los que tienen stock
+            productos_con_stock.append(prod)
+    
+    # ⚠️ REGLA CRÍTICA: Si hay un solo código y no tiene stock, NO crear la solicitud
+    if len(productos_validos) == 1 and len(productos_sin_stock) == 1:
+        error = productos_sin_stock[0]
+        if error['stock_disponible'] is None:
+            mensaje = (
+                f"NO SE PUEDE CREAR LA SOLICITUD: El código {error['codigo']} "
+                f"({error['descripcion'][:30]}...) no tiene bodega asignada. "
+                f"Cantidad solicitada: {error['cantidad']}"
+            )
+        else:
+            mensaje = (
+                f"NO SE PUEDE CREAR LA SOLICITUD: El código {error['codigo']} "
+                f"({error['descripcion'][:30]}...) no tiene stock disponible. "
+                f"Bodega {error['bodega']} - {error['problema']}"
+            )
+            if error.get('faltante'):
+                mensaje += f" (faltan {error['faltante']} unidades)"
+        raise SolicitudServiceError(mensaje)
+    
+    # Si no hay códigos con stock, no crear la solicitud
+    if not productos_con_stock:
+        raise SolicitudServiceError(
+            "NO SE PUEDE CREAR LA SOLICITUD: Ningún producto tiene stock disponible."
+        )
+    
+    # Si hay múltiples códigos y algunos no tienen stock, crear solo con los que tienen stock
+    if productos_sin_stock:
+        detalles_errores = []
+        for error in productos_sin_stock:
+            if error['stock_disponible'] is None:
+                detalle = (
+                    f"{error['codigo']} ({error['descripcion'][:30]}...): "
+                    f"{error['problema']} - Cantidad: {error['cantidad']}"
+                )
+            else:
+                detalle = (
+                    f"{error['codigo']} ({error['descripcion'][:30]}...): "
+                    f"Bodega {error['bodega']} - {error['problema']}"
+                )
+                if error.get('faltante'):
+                    detalle += f" (faltan {error['faltante']} unidades)"
+            detalles_errores.append(detalle)
+        
+        print(f"\n⚠️ ATENCIÓN: {len(productos_sin_stock)} producto(s) no tienen stock y NO se incluirán:")
+        for detalle in detalles_errores:
+            print(f"   ❌ {detalle}")
+        print(f"   Se crearán {len(productos_con_stock)} producto(s) con stock.\n")
+
+    primera = productos_con_stock[0]
     
     # LÓGICA: Si todos los detalles tienen bodega='013', la solicitud va directo a despacho
     todas_bodega_013 = all(
         (prod.get("bodega") or "").strip() == "013"
-        for prod in productos_validos
+        for prod in productos_con_stock
     )
     # Si todas son bodega 013, forzar estado a 'en_despacho' (ignora el estado del payload)
     estado_final = "en_despacho" if todas_bodega_013 else estado
@@ -304,10 +410,10 @@ def crear_solicitud_desde_payload(
     print(f"   Cliente: {solicitud.cliente}")
     print(f"   Tipo: {solicitud.get_tipo_display()}")
     print(f"   Estado: {solicitud.estado} {'(directo a despacho - todas bodega 013)' if todas_bodega_013 else ''}")
-    print(f"   Productos: {len(productos_validos)}")
+    print(f"   Productos: {len(productos_con_stock)} (de {len(productos_validos)} ingresados)")
     print(f"{'='*60}\n")
 
-    for prod in productos_validos:
+    for prod in productos_con_stock:
         bodega_prod = (prod.get("bodega") or "").strip()
         # Si todas las bodegas son '013', todos los detalles van a 'preparado'
         # porque la solicitud ya está en 'en_despacho' y no requieren preparación

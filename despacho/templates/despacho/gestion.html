@@ -45,7 +45,7 @@
                 </select>
             </div>
             <div class="col-md-2 d-flex align-items-end gap-2">
-                <button class="btn btn-outline-primary w-100">
+                <button type="submit" class="btn btn-outline-primary w-100">
                     <i class="bi bi-funnel me-1"></i> Filtrar
                 </button>
                 <a href="{% url 'despacho:gestion' %}" class="btn btn-outline-secondary w-100">
@@ -89,7 +89,8 @@
                             <input type="checkbox" class="solicitud-checkbox" value="{{ solicitud.id }}"
                                 data-detalles-id="detalles-{{ solicitud.id }}"
                                 data-transporte="{{ solicitud.transporte }}"
-                                data-ot="{{ solicitud.numero_ot|default:'' }}">
+                                data-ot="{{ solicitud.numero_ot|default:'' }}"
+                                data-afecta-stock="{{ solicitud.afecta_stock|yesno:'true,false' }}">
                             <script type="application/json" id="detalles-{{ solicitud.id }}">{{ solicitud.detalles_json|safe }}</script>
                         </td>
                         <td>
@@ -306,6 +307,7 @@
             const detalles = JSON.parse(script.textContent);
             const checkboxSolicitud = getCheckboxSolicitud(id);
             const numeroOt = checkboxSolicitud ? (checkboxSolicitud.dataset.ot || '-') : '-';
+            const afectaStock = checkboxSolicitud ? (checkboxSolicitud.dataset.afectaStock === 'true') : true;
 
             const card = document.createElement('div');
             card.className = 'border rounded mb-3';
@@ -343,8 +345,9 @@
                         </thead>
                         <tbody>
                             ${detalles.map(det => {
-                                const estaPreparado = det.estado_bodega === 'preparado' || det.preparado;
-                                const tieneAlerta = !estaPreparado && !det.bulto_id;
+                                // Si no afecta stock (despacho directo), permitir seleccionar aunque no esté preparado
+                                const estaPreparado = det.estado_bodega === 'preparado' || det.preparado || !afectaStock;
+                                const tieneAlerta = !estaPreparado && !det.bulto_id && afectaStock;
                                 return `
                                 <tr class="${tieneAlerta ? 'table-warning' : ''}">
                                     <td>

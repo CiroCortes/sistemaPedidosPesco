@@ -116,7 +116,11 @@ def lista_solicitudes(request):
 def crear_solicitud(request):
     """
     Permite al admin registrar nuevas solicitudes.
+    VALIDA STOCK: Crea solicitud solo con códigos que tienen stock.
+    Si hay un solo código y no tiene stock, rechaza la solicitud.
     """
+    from bodega.models import Stock
+    
     bodegas_activas = list(
         Bodega.objects.filter(activa=True)
         .order_by('codigo')
@@ -151,12 +155,132 @@ def crear_solicitud(request):
             if not detalles_validos:
                 messages.error(request, 'Debes ingresar al menos un producto en la tabla.')
             else:
-                # Crear la solicitud (cabecera)
+                # ⚠️ VALIDACIÓN DE STOCK: Separar códigos con stock de los que no tienen
+                detalles_con_stock = []
+                detalles_sin_stock = []
+                
+                for cd in detalles_validos:
+                    codigo = cd.get('codigo') or 'SC'
+                    cantidad = cd.get('cantidad')
+                    bodega_asignada = (cd.get('bodega') or '').strip()
+                    
+                    # Bodega 013 no requiere validación de stock - siempre permitir
+                    if bodega_asignada == '013':
+                        detalles_con_stock.append(cd)
+                        continue
+                    
+                    # Si no hay bodega asignada, no tiene stock
+                    if not bodega_asignada:
+                        detalles_sin_stock.append({
+                            'codigo': codigo,
+                            'descripcion': cd.get('descripcion', ''),
+                            'cantidad': cantidad,
+                            'bodega': 'Sin asignar',
+                            'problema': 'No tiene bodega asignada',
+                            'stock_disponible': None
+                        })
+                        continue
+                    
+                    # Validar stock en la bodega asignada
+                    stock_bodega = Stock.objects.filter(
+                        codigo=codigo,
+                        bodega=bodega_asignada
+                    ).first()
+                    
+                    if not stock_bodega:
+                        detalles_sin_stock.append({
+                            'codigo': codigo,
+                            'descripcion': cd.get('descripcion', ''),
+                            'cantidad': cantidad,
+                            'bodega': bodega_asignada,
+                            'problema': f'El código no existe en bodega {bodega_asignada}',
+                            'stock_disponible': 0
+                        })
+                    elif stock_bodega.stock_disponible < cantidad:
+                        faltante = cantidad - stock_bodega.stock_disponible
+                        detalles_sin_stock.append({
+                            'codigo': codigo,
+                            'descripcion': cd.get('descripcion', ''),
+                            'cantidad': cantidad,
+                            'bodega': bodega_asignada,
+                            'problema': f'Stock insuficiente: tiene {stock_bodega.stock_disponible}, se solicitan {cantidad}',
+                            'stock_disponible': stock_bodega.stock_disponible,
+                            'faltante': faltante
+                        })
+                    else:
+                        # Stock suficiente, agregar a los que tienen stock
+                        detalles_con_stock.append(cd)
+                
+                # ⚠️ REGLA CRÍTICA: Si hay un solo código y no tiene stock, NO crear la solicitud
+                if len(detalles_validos) == 1 and len(detalles_sin_stock) == 1:
+                    error = detalles_sin_stock[0]
+                    if error['stock_disponible'] is None:
+                        mensaje = (
+                            f'❌ NO SE PUEDE CREAR LA SOLICITUD: El código {error["codigo"]} '
+                            f'({error["descripcion"][:30]}...) no tiene bodega asignada. '
+                            f'Cantidad solicitada: {error["cantidad"]}'
+                        )
+                    else:
+                        mensaje = (
+                            f'❌ NO SE PUEDE CREAR LA SOLICITUD: El código {error["codigo"]} '
+                            f'({error["descripcion"][:30]}...) no tiene stock disponible. '
+                            f'Bodega {error["bodega"]} - {error["problema"]}'
+                        )
+                        if error.get('faltante'):
+                            mensaje += f' (faltan {error["faltante"]} unidades)'
+                    messages.error(request, mensaje)
+                    return render(request, 'solicitudes/formulario.html', {
+                        'form': form, 
+                        'formset': formset
+                    })
+                
+                # Si hay múltiples códigos y algunos no tienen stock, crear solo con los que tienen stock
+                if detalles_sin_stock:
+                    mensaje_principal = (
+                        f'⚠️ ATENCIÓN: {len(detalles_sin_stock)} producto(s) no tienen stock disponible '
+                        f'y NO se incluirán en la solicitud. Se crearán {len(detalles_con_stock)} producto(s) con stock.'
+                    )
+                    messages.warning(request, mensaje_principal)
+                    
+                    # Mostrar detalles de productos sin stock
+                    for error in detalles_sin_stock:
+                        if error['stock_disponible'] is None:
+                            mensaje_detalle = (
+                                f"  ❌ {error['codigo']} ({error['descripcion'][:30]}...): "
+                                f"{error['problema']} - Cantidad: {error['cantidad']}"
+                            )
+                        else:
+                            mensaje_detalle = (
+                                f"  ❌ {error['codigo']} ({error['descripcion'][:30]}...): "
+                                f"Bodega {error['bodega']} - {error['problema']}"
+                            )
+                            if error.get('faltante'):
+                                mensaje_detalle += f" (faltan {error['faltante']} unidades)"
+                        messages.warning(request, mensaje_detalle)
+                    
+                    # Informar que estos productos se pueden agregar después cuando haya stock
+                    messages.info(
+                        request, 
+                        f'💡 Estos productos se pueden agregar a la solicitud después cuando haya stock disponible.'
+                    )
+                
+                # Si no hay códigos con stock, no crear la solicitud
+                if not detalles_con_stock:
+                    messages.error(
+                        request, 
+                        '❌ NO SE PUEDE CREAR LA SOLICITUD: Ningún producto tiene stock disponible.'
+                    )
+                    return render(request, 'solicitudes/formulario.html', {
+                        'form': form, 
+                        'formset': formset
+                    })
+                
+                # Crear la solicitud SOLO con los códigos que tienen stock
                 solicitud = form.save(commit=False)
                 solicitud.solicitante = request.user
 
-                # Tomar la primera línea como resumen para cabecera
-                primera = detalles_validos[0]
+                # Tomar la primera línea de los que tienen stock como resumen para cabecera
+                primera = detalles_con_stock[0]
                 solicitud.codigo = primera.get('codigo') or 'SC'
                 solicitud.descripcion = primera.get('descripcion') or ''
                 solicitud.cantidad_solicitada = primera.get('cantidad')
@@ -164,20 +288,16 @@ def crear_solicitud(request):
                 # LÓGICA: Si todos los detalles tienen bodega='013', la solicitud va directo a despacho
                 todas_bodega_013 = all(
                     (cd.get('bodega') or '').strip() == '013' 
-                    for cd in detalles_validos
+                    for cd in detalles_con_stock
                 )
                 if todas_bodega_013:
                     solicitud.estado = 'en_despacho'
 
                 solicitud.save()
 
-                # Guardar todas las líneas en SolicitudDetalle
-                # Si todas las bodegas son '013', los detalles se crean con estado_bodega='preparado'
-                # porque la solicitud ya está en 'en_despacho' y no requieren preparación
-                for cd in detalles_validos:
+                # Guardar SOLO las líneas que tienen stock
+                for cd in detalles_con_stock:
                     bodega_detalle = (cd.get('bodega') or '').strip()
-                    # Si todas son bodega 013, todos los detalles van a 'preparado'
-                    # Si no, usan 'pendiente' (requieren preparación)
                     estado_bodega_inicial = 'preparado' if todas_bodega_013 else 'pendiente'
                     
                     solicitud.detalles.create(
@@ -188,7 +308,10 @@ def crear_solicitud(request):
                         estado_bodega=estado_bodega_inicial,
                     )
 
-                messages.success(request, f'Solicitud #{solicitud.id} creada correctamente.')
+                messages.success(
+                    request, 
+                    f'✅ Solicitud #{solicitud.id} creada correctamente con {len(detalles_con_stock)} producto(s).'
+                )
                 return redirect('solicitudes:lista')
         else:
             messages.error(request, 'Por favor corrige los errores del formulario.')
@@ -207,10 +330,24 @@ def detalle_solicitud(request, pk):
     """
     solicitud = get_object_or_404(Solicitud.objects.select_related('solicitante'), pk=pk)
 
-    # Validación de acceso similar a la lista
-    if request.user.es_bodega() and solicitud.estado != 'pendiente':
-        messages.warning(request, 'No puedes acceder a solicitudes fuera de tu módulo.')
-        return redirect('solicitudes:lista')
+    # Validación de acceso mejorada
+    if request.user.es_bodega():
+        # Verificar que la solicitud tenga detalles de las bodegas del usuario
+        bodegas_usuario = request.user.get_bodegas_codigos()
+        if not bodegas_usuario:
+            messages.warning(request, 'No tienes bodegas asignadas.')
+            return redirect('solicitudes:lista')
+        
+        # Verificar que la solicitud tenga detalles pendientes de sus bodegas
+        tiene_detalles_bodega = solicitud.detalles.filter(
+            bodega__in=bodegas_usuario,
+            estado_bodega='pendiente'
+        ).exclude(bodega='013').exists()
+        
+        if not tiene_detalles_bodega or solicitud.estado != 'pendiente':
+            messages.warning(request, 'No puedes acceder a solicitudes fuera de tu módulo.')
+            return redirect('solicitudes:lista')
+            
     if request.user.es_despacho() and solicitud.estado not in ['en_despacho', 'embalado', 'listo_despacho', 'en_ruta']:
         messages.warning(request, 'No puedes acceder a solicitudes fuera de tu módulo.')
         return redirect('solicitudes:lista')
