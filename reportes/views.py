@@ -6,6 +6,7 @@ from django.utils import timezone
 from datetime import datetime
 import hashlib
 import json
+import pytz
 
 from solicitudes.models import Solicitud, SolicitudDetalle
 from despacho.models import Bulto
@@ -158,26 +159,44 @@ def informe_completo(request):
                             pass
                 
                 # Preparar datos del registro
-                # Fechas y horas con formato seguro
+                # Fechas y horas con formato seguro (convertir a zona horaria de Chile)
+                chile_tz = pytz.timezone('America/Santiago')
+                
                 fecha_ingreso = ''
                 hora_ingreso = ''
                 if solicitud.fecha_solicitud:
                     fecha_ingreso = solicitud.fecha_solicitud.strftime('%d/%m/%Y')
                 if solicitud.hora_solicitud:
+                    # hora_solicitud es TimeField, ya está en hora local, solo formatear
                     hora_ingreso = solicitud.hora_solicitud.strftime('%H:%M')
                 
                 fecha_prep = ''
                 hora_prep = ''
                 if es_modelo:
                     if hasattr(detalle, 'fecha_preparacion') and detalle.fecha_preparacion:
-                        fecha_prep = detalle.fecha_preparacion.strftime('%d/%m/%Y')
-                        hora_prep = detalle.fecha_preparacion.strftime('%H:%M')
+                        # fecha_preparacion es DateTimeField, convertir a zona horaria de Chile
+                        if timezone.is_aware(detalle.fecha_preparacion):
+                            fecha_chile = detalle.fecha_preparacion.astimezone(chile_tz)
+                        else:
+                            fecha_chile = chile_tz.localize(detalle.fecha_preparacion)
+                        fecha_prep = fecha_chile.strftime('%d/%m/%Y')
+                        hora_prep = fecha_chile.strftime('%H:%M')
                 else:
                     fecha_prep_obj = detalle.get('fecha_preparacion')
                     if fecha_prep_obj:
                         if hasattr(fecha_prep_obj, 'strftime'):
-                            fecha_prep = fecha_prep_obj.strftime('%d/%m/%Y')
-                            hora_prep = fecha_prep_obj.strftime('%H:%M')
+                            # Convertir a zona horaria de Chile si es datetime
+                            if hasattr(fecha_prep_obj, 'astimezone'):
+                                if timezone.is_aware(fecha_prep_obj):
+                                    fecha_chile = fecha_prep_obj.astimezone(chile_tz)
+                                else:
+                                    fecha_chile = chile_tz.localize(fecha_prep_obj)
+                                fecha_prep = fecha_chile.strftime('%d/%m/%Y')
+                                hora_prep = fecha_chile.strftime('%H:%M')
+                            else:
+                                # Es un objeto time o date, formatear directo
+                                fecha_prep = fecha_prep_obj.strftime('%d/%m/%Y') if hasattr(fecha_prep_obj, 'year') else ''
+                                hora_prep = fecha_prep_obj.strftime('%H:%M') if hasattr(fecha_prep_obj, 'hour') else ''
                 
                 fecha_emb = ''
                 hora_emb = ''
@@ -186,13 +205,23 @@ def informe_completo(request):
                 num_bulto = ''
                 if bulto:
                     if hasattr(bulto, 'fecha_embalaje') and bulto.fecha_embalaje:
-                        fecha_emb = bulto.fecha_embalaje.strftime('%d/%m/%Y')
-                        hora_emb = bulto.fecha_embalaje.strftime('%H:%M')
+                        # fecha_embalaje es DateTimeField, convertir a zona horaria de Chile
+                        if timezone.is_aware(bulto.fecha_embalaje):
+                            fecha_chile = bulto.fecha_embalaje.astimezone(chile_tz)
+                        else:
+                            fecha_chile = chile_tz.localize(bulto.fecha_embalaje)
+                        fecha_emb = fecha_chile.strftime('%d/%m/%Y')
+                        hora_emb = fecha_chile.strftime('%H:%M')
                     
                     fecha_despacho_obj = (bulto.fecha_envio or bulto.fecha_entrega) if hasattr(bulto, 'fecha_envio') else None
                     if fecha_despacho_obj:
-                        fecha_desp = fecha_despacho_obj.strftime('%d/%m/%Y')
-                        hora_desp = fecha_despacho_obj.strftime('%H:%M')
+                        # Convertir a zona horaria de Chile
+                        if timezone.is_aware(fecha_despacho_obj):
+                            fecha_chile = fecha_despacho_obj.astimezone(chile_tz)
+                        else:
+                            fecha_chile = chile_tz.localize(fecha_despacho_obj)
+                        fecha_desp = fecha_chile.strftime('%d/%m/%Y')
+                        hora_desp = fecha_chile.strftime('%H:%M')
                     
                     num_bulto = bulto.codigo if hasattr(bulto, 'codigo') else ''
                 
@@ -202,12 +231,14 @@ def informe_completo(request):
                     descripcion = detalle.descripcion or ''
                     cantidad = detalle.cantidad
                     bodega_asignada = detalle.bodega or ''
+                    estado_linea = detalle.estado_bodega if hasattr(detalle, 'estado_bodega') else 'pendiente'
                     detalle_id = detalle.id
                 else:
                     codigo = detalle.get('codigo', '')
                     descripcion = detalle.get('descripcion', '')
                     cantidad = detalle.get('cantidad', 0)
                     bodega_asignada = detalle.get('bodega', '')
+                    estado_linea = detalle.get('estado_bodega', 'pendiente')
                     detalle_id = None
                 
                 registro = {
@@ -216,9 +247,11 @@ def informe_completo(request):
                     'hora_ingreso': hora_ingreso,
                     'tipo': solicitud.get_tipo_display(),
                     'numero_pedido': solicitud.numero_pedido or '',
+                    'cliente': solicitud.cliente or '',
                     'numero_guia': solicitud.numero_guia_despacho or '',
                     'transporte': solicitud.get_transporte_display() or solicitud.transporte or '',
                     'numero_ot': solicitud.numero_ot or '',
+                    'estado_linea': estado_linea.replace('_', ' ').title() if estado_linea else 'Pendiente',
                     
                     # Datos de SolicitudDetalle
                     'codigo': codigo,

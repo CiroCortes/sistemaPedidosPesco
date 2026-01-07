@@ -109,8 +109,8 @@ input[readonly] {
                     {% endif %}
                 </div>
                 {% endif %}
-                <div class="col-md-6">
-                <div class="col-md-3 d-flex align-items-center mt-4">
+                
+                <div class="col-md-6 d-flex align-items-center mt-4">
                     <div class="form-check form-switch">
                         {{ form.urgente }}
                         <label class="form-check-label ms-2">{{ form.urgente.label }}</label>
@@ -120,7 +120,7 @@ input[readonly] {
                     {% endif %}
                 </div>
                 
-                <div class="col-md-3 d-flex align-items-center mt-4">
+                <div class="col-md-6 d-flex align-items-center mt-4">
                     <div class="form-check form-switch">
                         {{ form.afecta_stock }}
                         <label class="form-check-label ms-2">{{ form.afecta_stock.label }}</label>
@@ -142,6 +142,7 @@ input[readonly] {
             </div>
 
             <!-- Detalles adicionales -->
+            {% if not es_edicion_avanzada %}
             <hr class="my-4">
             <h5>Productos adicionales</h5>
             <p class="text-muted">
@@ -226,6 +227,126 @@ input[readonly] {
                 </button>
                 <small class="text-muted ms-2">Agrega líneas según necesites (máximo 45).</small>
             </div>
+            {% endif %}
+
+            {% if es_edicion_avanzada %}
+            <!-- Sección de Edición de Fechas de Preparación (Admin) -->
+            <div class="mt-5 border-top pt-4">
+                <h5 class="mb-3">
+                    <i class="bi bi-clock-history me-2"></i>
+                    Fechas de Preparación de Productos
+                    <span class="badge bg-warning text-dark">Control de KPIs</span>
+                </h5>
+                <p class="text-muted small">
+                    Ajusta las fechas y horas de preparación si hubo errores en el registro. 
+                    Esto afecta directamente los KPIs de tiempo de preparación.
+                </p>
+                
+                {{ formset.management_form }}
+                
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Código</th>
+                                <th>Descripción</th>
+                                <th>Cantidad</th>
+                                <th>Bodega</th>
+                                <th>Estado</th>
+                                <th style="min-width: 200px;">Fecha/Hora Preparación</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for form in formset %}
+                            <tr>
+                                <td>
+                                    {{ form.id }}
+                                    {{ form.codigo }}
+                                </td>
+                                <td>{{ form.descripcion }}</td>
+                                <td>{{ form.cantidad }}</td>
+                                <td>{{ form.bodega }}</td>
+                                <td>{{ form.estado_bodega }}</td>
+                                <td>
+                                    {{ form.fecha_preparacion }}
+                                    {% if form.fecha_preparacion.errors %}
+                                    <div class="text-danger small">{{ form.fecha_preparacion.errors|striptags }}</div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Sección de Edición de Fechas de Bultos (Admin) -->
+            {% if formset_bultos %}
+            <div class="mt-5 border-top pt-4">
+                <h5 class="mb-3">
+                    <i class="bi bi-box-seam me-2"></i>
+                    Fechas de Embalaje y Despacho de Bultos
+                    <span class="badge bg-warning text-dark">Control de KPIs</span>
+                </h5>
+                <p class="text-muted small">
+                    Ajusta las fechas y horas de embalaje, envío y entrega si hubo errores en el registro. 
+                    Esto afecta directamente los KPIs de tiempo de despacho.
+                </p>
+                
+                {{ formset_bultos.management_form }}
+                
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Código Bulto</th>
+                                <th>Estado</th>
+                                <th style="min-width: 200px;">Fecha/Hora Embalaje</th>
+                                <th style="min-width: 200px;">Fecha/Hora Envío</th>
+                                <th style="min-width: 200px;">Fecha/Hora Entrega</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for form in formset_bultos %}
+                            <tr>
+                                <td>
+                                    {{ form.id }}
+                                    <strong>{{ form.instance.codigo }}</strong>
+                                </td>
+                                <td>{{ form.estado }}</td>
+                                <td>
+                                    {{ form.fecha_embalaje }}
+                                    {% if form.fecha_embalaje.errors %}
+                                    <div class="text-danger small">{{ form.fecha_embalaje.errors|striptags }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ form.fecha_envio }}
+                                    {% if form.fecha_envio.errors %}
+                                    <div class="text-danger small">{{ form.fecha_envio.errors|striptags }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ form.fecha_entrega }}
+                                    {% if form.fecha_entrega.errors %}
+                                    <div class="text-danger small">{{ form.fecha_entrega.errors|striptags }}</div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Alerta de validación -->
+                <div class="alert alert-info mt-3" id="alertValidacion" style="display: none;">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Validación de fechas:</strong>
+                    <ul id="listaValidaciones" class="mb-0 mt-2"></ul>
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
 
             <div class="mt-4 d-flex justify-content-end">
                 <a href="{% url 'solicitudes:lista' %}" class="btn btn-light me-2">Cancelar</a>
@@ -416,4 +537,160 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+{% if es_edicion_avanzada %}
+<script>
+// ============================================================
+// VALIDACIÓN DE FECHAS PARA CONTROL DE KPIs
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    const alertValidacion = document.getElementById('alertValidacion');
+    const listaValidaciones = document.getElementById('listaValidaciones');
+    
+    if (!alertValidacion || !listaValidaciones) return;
+    
+    // Función para validar consistencia de fechas
+    function validarFechas() {
+        const validaciones = [];
+        
+        // Obtener todas las fechas de preparación
+        const fechasPreparacion = [];
+        document.querySelectorAll('[name*="detalles-"][name*="-fecha_preparacion"]').forEach(input => {
+            if (input.value) {
+                fechasPreparacion.push({
+                    elemento: input,
+                    fecha: new Date(input.value),
+                    nombre: 'Preparación'
+                });
+            }
+        });
+        
+        // Obtener todas las fechas de bultos
+        const fechasEmbalaje = [];
+        const fechasEnvio = [];
+        const fechasEntrega = [];
+        
+        document.querySelectorAll('[name*="bultos-"][name*="-fecha_embalaje"]').forEach(input => {
+            if (input.value) {
+                fechasEmbalaje.push({
+                    elemento: input,
+                    fecha: new Date(input.value),
+                    nombre: 'Embalaje',
+                    row: input.closest('tr')
+                });
+            }
+        });
+        
+        document.querySelectorAll('[name*="bultos-"][name*="-fecha_envio"]').forEach(input => {
+            if (input.value) {
+                fechasEnvio.push({
+                    elemento: input,
+                    fecha: new Date(input.value),
+                    nombre: 'Envío',
+                    row: input.closest('tr')
+                });
+            }
+        });
+        
+        document.querySelectorAll('[name*="bultos-"][name*="-fecha_entrega"]').forEach(input => {
+            if (input.value) {
+                fechasEntrega.push({
+                    elemento: input,
+                    fecha: new Date(input.value),
+                    nombre: 'Entrega',
+                    row: input.closest('tr')
+                });
+            }
+        });
+        
+        // Validación 1: Embalaje debe ser después de preparación
+        if (fechasPreparacion.length > 0 && fechasEmbalaje.length > 0) {
+            const maxPreparacion = Math.max(...fechasPreparacion.map(f => f.fecha.getTime()));
+            fechasEmbalaje.forEach(emb => {
+                if (emb.fecha.getTime() < maxPreparacion) {
+                    validaciones.push({
+                        tipo: 'warning',
+                        mensaje: `⚠️ Fecha de embalaje (${emb.fecha.toLocaleString('es-CL')}) es anterior a la última preparación. Esto generará KPI negativo.`,
+                        elemento: emb.elemento
+                    });
+                }
+            });
+        }
+        
+        // Validación 2: Envío debe ser después de embalaje (mismo bulto)
+        fechasEmbalaje.forEach((emb, index) => {
+            const envioMismoBulto = fechasEnvio[index];
+            if (envioMismoBulto && envioMismoBulto.fecha.getTime() < emb.fecha.getTime()) {
+                validaciones.push({
+                    tipo: 'error',
+                    mensaje: `❌ Fecha de envío (${envioMismoBulto.fecha.toLocaleString('es-CL')}) es anterior al embalaje del mismo bulto. Esto es inconsistente.`,
+                    elemento: envioMismoBulto.elemento
+                });
+            }
+        });
+        
+        // Validación 3: Entrega debe ser después de envío (mismo bulto)
+        fechasEnvio.forEach((env, index) => {
+            const entregaMismoBulto = fechasEntrega[index];
+            if (entregaMismoBulto && entregaMismoBulto.fecha.getTime() < env.fecha.getTime()) {
+                validaciones.push({
+                    tipo: 'error',
+                    mensaje: `❌ Fecha de entrega (${entregaMismoBulto.fecha.toLocaleString('es-CL')}) es anterior al envío del mismo bulto. Esto es inconsistente.`,
+                    elemento: entregaMismoBulto.elemento
+                });
+            }
+        });
+        
+        // Mostrar validaciones
+        if (validaciones.length > 0) {
+            listaValidaciones.innerHTML = '';
+            validaciones.forEach(v => {
+                const li = document.createElement('li');
+                li.textContent = v.mensaje;
+                li.className = v.tipo === 'error' ? 'text-danger' : 'text-warning';
+                listaValidaciones.appendChild(li);
+                
+                // Resaltar campo con problema
+                if (v.elemento) {
+                    v.elemento.style.borderColor = v.tipo === 'error' ? '#dc3545' : '#ffc107';
+                    v.elemento.style.borderWidth = '2px';
+                }
+            });
+            alertValidacion.style.display = 'block';
+            alertValidacion.className = validaciones.some(v => v.tipo === 'error') ? 
+                'alert alert-danger mt-3' : 'alert alert-warning mt-3';
+        } else {
+            alertValidacion.style.display = 'none';
+            // Limpiar estilos de campos
+            document.querySelectorAll('[name*="-fecha_"]').forEach(input => {
+                input.style.borderColor = '';
+                input.style.borderWidth = '';
+            });
+        }
+    }
+    
+    // Ejecutar validación al cambiar cualquier fecha
+    document.querySelectorAll('[name*="-fecha_"]').forEach(input => {
+        input.addEventListener('change', validarFechas);
+        input.addEventListener('blur', validarFechas);
+    });
+    
+    // Validar al cargar la página
+    validarFechas();
+    
+    // Advertencia al enviar formulario si hay errores
+    document.getElementById('formSolicitud').addEventListener('submit', function(e) {
+        const tieneErrores = alertValidacion.style.display !== 'none' && 
+                            alertValidacion.classList.contains('alert-danger');
+        
+        if (tieneErrores) {
+            if (!confirm('⚠️ Hay inconsistencias en las fechas que pueden afectar los KPIs.\n\n¿Deseas guardar de todas formas?')) {
+                e.preventDefault();
+            }
+        }
+    });
+});
+</script>
+{% endif %}
+
 {% endblock %}

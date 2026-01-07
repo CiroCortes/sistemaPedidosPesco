@@ -335,37 +335,6 @@
             </div>
         </div>
         
-        <!-- Gráfico de Desglose OTROS -->
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">
-                            <i class="bi bi-pie-chart me-2"></i>
-                            Desglose OTROS - Operaciones (Últimos {{ periodo_actual }} días)
-                        </h6>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="chartOperacionesOtros" height="80"></canvas>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">
-                            <i class="bi bi-pie-chart-fill me-2"></i>
-                            Desglose OTROS - Valor USD (Últimos {{ periodo_actual }} días)
-                        </h6>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="chartUsdOtros" height="80"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <!-- Tabla de Códigos en Despacho -->
         <div class="row">
             <div class="col-12">
@@ -463,6 +432,125 @@ function aplicarFiltros() {
 document.addEventListener('DOMContentLoaded', function() {
     // Verificar si Chart.js está disponible
     if (typeof Chart !== 'undefined') {
+        
+        // 🎨 MAPEO FIJO DE COLORES POR SUCURSAL/CATEGORÍA
+        const colorMap = {
+            'SUC CALAMA': 'rgba(40, 167, 69, 0.8)',          // Verde
+            'SUC ANTOFAGASTA': 'rgba(0, 123, 255, 0.8)',     // Azul
+            'SUC PTO MONTT': 'rgba(220, 53, 69, 0.8)',       // Rojo
+            'SUC LOS ANGELES': 'rgba(255, 193, 7, 0.8)',     // Amarillo
+            'OTROS': 'rgba(108, 117, 125, 0.8)',             // Gris oscuro
+            'Sin valor USD (RRHH, internos, etc.)': 'rgba(255, 99, 132, 0.8)',  // Rosa
+            'DEFAULT': 'rgba(153, 102, 255, 0.8)'            // Púrpura - para categorías no mapeadas
+        };
+        
+        // Función para obtener color por nombre de categoría
+        function getColorForCategory(categoryName) {
+            return colorMap[categoryName] || colorMap['DEFAULT'];
+        }
+        
+        // ✨ CONFIGURACIÓN GLOBAL DE ANIMACIONES ✨
+        const animacionConfig = {
+            duration: 1500,  // Duración de la animación en ms
+            easing: 'easeInOutQuart',  // Efecto de animación suave
+            delay: (context) => {
+                let delay = 0;
+                if (context.type === 'data' && context.mode === 'default') {
+                    delay = context.dataIndex * 100;  // Efecto escalonado
+                }
+                return delay;
+            }
+        };
+        
+        const hoverAnimacionConfig = {
+            duration: 200,
+            easing: 'easeInOutQuad'
+        };
+        
+        // ✨ PLUGIN PARA MOSTRAR PORCENTAJES EN LAS TORTAS ✨
+        const porcentajePlugin = {
+            id: 'porcentajeLabels',
+            afterDatasetsDraw: function(chart) {
+                // Solo aplicar a gráficos de tipo 'pie' (tortas)
+                if (chart.config.type !== 'pie') {
+                    return;
+                }
+                
+                const ctx = chart.ctx;
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    const meta = chart.getDatasetMeta(datasetIndex);
+                    if (!meta.hidden) {
+                        meta.data.forEach((element, index) => {
+                            // Solo mostrar si el porcentaje es mayor a 3% (para evitar overlap en segmentos pequeños)
+                            const data = dataset.data[index];
+                            if (data > 3) {
+                                ctx.fillStyle = '#fff';
+                                ctx.font = 'bold 14px Arial';
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                
+                                const position = element.tooltipPosition();
+                                const text = data.toFixed(1) + '%';
+                                
+                                // Dibujar sombra para mejor legibilidad
+                                ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                                ctx.shadowBlur = 3;
+                                ctx.shadowOffsetX = 1;
+                                ctx.shadowOffsetY = 1;
+                                
+                                ctx.fillText(text, position.x, position.y);
+                                
+                                // Resetear sombra
+                                ctx.shadowColor = 'transparent';
+                                ctx.shadowBlur = 0;
+                                ctx.shadowOffsetX = 0;
+                                ctx.shadowOffsetY = 0;
+                            }
+                        });
+                    }
+                });
+            }
+        };
+        
+        // ✨ PLUGIN PARA MOSTRAR VALORES EN BARRAS ✨
+        const valoresBarrasPlugin = {
+            id: 'valoresBarras',
+            afterDatasetsDraw: function(chart) {
+                // Solo aplicar a gráficos de tipo 'bar' (barras)
+                if (chart.config.type !== 'bar') {
+                    return;
+                }
+                
+                const ctx = chart.ctx;
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    const meta = chart.getDatasetMeta(datasetIndex);
+                    if (!meta.hidden) {
+                        meta.data.forEach((bar, index) => {
+                            const data = dataset.data[index];
+                            
+                            ctx.fillStyle = '#2c3e50';
+                            ctx.font = 'bold 14px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                            
+                            // Posicionar el texto encima de la barra
+                            const x = bar.x;
+                            const y = bar.y - 5;
+                            const text = data.toString();
+                            
+                            ctx.fillText(text, x, y);
+                        });
+                    }
+                });
+            }
+        };
+        
+        // Registrar los plugins globalmente
+        if (Chart.registry) {
+            Chart.register(porcentajePlugin);
+            Chart.register(valoresBarrasPlugin);
+        }
+        
         // Datos para el gráfico de Tendencia Lead Time Preparación
         const ctxLeadTimes = document.getElementById('chartLeadTimes');
         if (ctxLeadTimes) {
@@ -541,9 +629,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    animation: animacionConfig,
                     interaction: {
                         intersect: false,
                         mode: 'index'
+                    },
+                    transitions: {
+                        show: {
+                            animations: {
+                                x: {
+                                    from: 0
+                                },
+                                y: {
+                                    from: 0
+                                }
+                            }
+                        },
+                        hide: {
+                            animations: {
+                                x: {
+                                    to: 0
+                                },
+                                y: {
+                                    to: 0
+                                }
+                            }
+                        }
                     },
                     scales: {
                         y: {
@@ -645,12 +756,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         data: cantidades,
                         backgroundColor: 'rgba(0, 123, 255, 0.7)',
                         borderColor: 'rgba(0, 123, 255, 1)',
-                        borderWidth: 1
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        borderSkipped: false
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    animation: animacionConfig,
                     scales: {
                         y: {
                             beginAtZero: true,
@@ -677,6 +791,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const porcentajesOperaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
             const operaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}{{ item.operaciones|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
             
+            // Debug: Verificar cuántas categorías hay
+            console.log('📊 Gráfico Operaciones - Categorías:', clientesOperaciones.length, clientesOperaciones);
+            console.log('📊 Gráfico Operaciones - Porcentajes:', porcentajesOperaciones);
+            
             // Validar que todos los arrays tengan la misma longitud
             const minLength = Math.min(clientesOperaciones.length, porcentajesOperaciones.length, operaciones.length);
             if (minLength > 0) {
@@ -684,14 +802,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const clientesFinal = clientesOperaciones.slice(0, minLength);
                 const porcentajesFinal = porcentajesOperaciones.slice(0, minLength);
                 const operacionesFinal = operaciones.slice(0, minLength).map(v => v || 0);
-                // Colores limitados para sucursales + OTROS (máximo 5 categorías)
-                const colors = [
-                    'rgba(40, 167, 69, 0.8)',   // Verde - SUC CALAMA
-                    'rgba(0, 123, 255, 0.8)',   // Azul - SUC ANTOFAGASTA
-                    'rgba(220, 53, 69, 0.8)',   // Rojo - SUC PTO MONTT
-                    'rgba(255, 193, 7, 0.8)',   // Amarillo - SUC LOS ANGELES
-                    'rgba(108, 117, 125, 0.8)', // Gris - OTROS
-                ];
+                
+                // Asignar colores según el nombre de la categoría (mapeo fijo)
+                const colors = clientesFinal.map(cliente => getColorForCategory(cliente));
+                
+                console.log('📊 Gráfico Operaciones - Clientes:', clientesFinal);
+                console.log('🎨 Colores asignados:', colors);
                 
                 new Chart(ctxOperacionesCliente, {
                     type: 'pie',
@@ -702,19 +818,43 @@ document.addEventListener('DOMContentLoaded', function() {
                             data: porcentajesFinal,
                             backgroundColor: colors.slice(0, clientesFinal.length),
                             borderColor: '#fff',
-                            borderWidth: 2
+                            borderWidth: 2,
+                            hoverOffset: 15,
+                            hoverBorderWidth: 3
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
+                        animation: {
+                            animateRotate: true,
+                            animateScale: true,
+                            duration: 1500,
+                            easing: 'easeInOutQuart'
+                        },
                         plugins: {
                             legend: {
                                 display: true,
                                 position: 'right',
                                 labels: {
                                     padding: 15,
-                                    usePointStyle: true
+                                    usePointStyle: true,
+                                    font: {
+                                        size: 12
+                                    },
+                                    generateLabels: function(chart) {
+                                        const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                        const labelsOriginal = original.call(this, chart);
+                                        
+                                        // Agregar porcentajes a cada etiqueta
+                                        labelsOriginal.forEach((label, i) => {
+                                            if (i < porcentajesFinal.length) {
+                                                label.text = clientesFinal[i] + ' (' + porcentajesFinal[i].toFixed(1) + '%)';
+                                            }
+                                        });
+                                        
+                                        return labelsOriginal;
+                                    }
                                 }
                             },
                             tooltip: {
@@ -750,6 +890,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const porcentajesUsd = [{% for item in indicadores.porcentajes_usd_cliente %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
             const valoresUsd = [{% for item in indicadores.porcentajes_usd_cliente %}{{ item.valor_usd|default:0|floatformat:2 }}{% if not forloop.last %},{% endif %}{% endfor %}];
             
+            // Debug: Verificar cuántas categorías hay
+            console.log('📊 Gráfico USD - Categorías:', clientesUsd.length, clientesUsd);
+            console.log('📊 Gráfico USD - Porcentajes:', porcentajesUsd);
+            
             // Validar que todos los arrays tengan la misma longitud
             const minLengthUsd = Math.min(clientesUsd.length, porcentajesUsd.length, valoresUsd.length);
             if (minLengthUsd > 0) {
@@ -757,15 +901,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const clientesUsdFinal = clientesUsd.slice(0, minLengthUsd);
                 const porcentajesUsdFinal = porcentajesUsd.slice(0, minLengthUsd);
                 const valoresUsdFinal = valoresUsd.slice(0, minLengthUsd).map(v => parseFloat(v) || 0);
-                // Colores limitados para sucursales + OTROS
-                const colorsUsd = [
-                    'rgba(40, 167, 69, 0.8)',   // Verde - SUC CALAMA
-                    'rgba(0, 123, 255, 0.8)',   // Azul - SUC ANTOFAGASTA
-                    'rgba(220, 53, 69, 0.8)',   // Rojo - SUC PTO MONTT
-                    'rgba(255, 193, 7, 0.8)',   // Amarillo - SUC LOS ANGELES
-                    'rgba(108, 117, 125, 0.8)', // Gris - OTROS
-                    'rgba(128, 128, 128, 0.6)', // Gris claro (para sin valor)
-                ];
+                
+                // Asignar colores según el nombre de la categoría (mapeo fijo)
+                const colorsUsd = clientesUsdFinal.map(cliente => getColorForCategory(cliente));
+                
+                console.log('📊 Gráfico USD - Clientes:', clientesUsdFinal);
+                console.log('🎨 Colores asignados:', colorsUsd);
                 
                 new Chart(ctxUsdCliente, {
                     type: 'pie',
@@ -776,19 +917,43 @@ document.addEventListener('DOMContentLoaded', function() {
                             data: porcentajesUsdFinal,
                             backgroundColor: colorsUsd.slice(0, clientesUsdFinal.length),
                             borderColor: '#fff',
-                            borderWidth: 2
+                            borderWidth: 2,
+                            hoverOffset: 15,
+                            hoverBorderWidth: 3
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
+                        animation: {
+                            animateRotate: true,
+                            animateScale: true,
+                            duration: 1500,
+                            easing: 'easeInOutQuart'
+                        },
                         plugins: {
                             legend: {
                                 display: true,
                                 position: 'right',
                                 labels: {
                                     padding: 15,
-                                    usePointStyle: true
+                                    usePointStyle: true,
+                                    font: {
+                                        size: 12
+                                    },
+                                    generateLabels: function(chart) {
+                                        const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                        const labelsOriginal = original.call(this, chart);
+                                        
+                                        // Agregar porcentajes a cada etiqueta
+                                        labelsOriginal.forEach((label, i) => {
+                                            if (i < porcentajesUsdFinal.length) {
+                                                label.text = clientesUsdFinal[i] + ' (' + porcentajesUsdFinal[i].toFixed(1) + '%)';
+                                            }
+                                        });
+                                        
+                                        return labelsOriginal;
+                                    }
                                 }
                             },
                             tooltip: {
@@ -803,164 +968,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                             label += porcentajesUsdFinal[index].toFixed(2) + '%';
                                             if (valoresUsdFinal && index < valoresUsdFinal.length && valoresUsdFinal[index] > 0) {
                                                 label += ' ($' + valoresUsdFinal[index].toLocaleString('es-CL', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD)';
-                                            } else {
-                                                label += ' (Sin valor USD)';
-                                            }
-                                        }
-                                        return label;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-        }
-        
-        // Gráfico de Desglose OTROS - Operaciones
-        const ctxOperacionesOtros = document.getElementById('chartOperacionesOtros');
-        if (ctxOperacionesOtros) {
-            {% if indicadores.porcentajes_operaciones_otros %}
-            const clientesOtros = [{% for item in indicadores.porcentajes_operaciones_otros %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
-            const porcentajesOtros = [{% for item in indicadores.porcentajes_operaciones_otros %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
-            const operacionesOtros = [{% for item in indicadores.porcentajes_operaciones_otros %}{{ item.operaciones|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
-            {% else %}
-            const clientesOtros = [];
-            const porcentajesOtros = [];
-            const operacionesOtros = [];
-            {% endif %}
-            
-            // Validar que todos los arrays tengan la misma longitud
-            const minLengthOtros = Math.min(clientesOtros.length, porcentajesOtros.length, operacionesOtros.length);
-            if (minLengthOtros > 0) {
-                // Asegurar que todos los arrays tengan la misma longitud
-                const clientesOtrosFinal = clientesOtros.slice(0, minLengthOtros);
-                const porcentajesOtrosFinal = porcentajesOtros.slice(0, minLengthOtros);
-                const operacionesOtrosFinal = operacionesOtros.slice(0, minLengthOtros).map(v => v || 0);
-                
-                // Colores para desglose de OTROS (más variados ya que pueden ser muchos clientes)
-                const colorsOtros = [
-                    'rgba(40, 167, 69, 0.8)',   'rgba(0, 123, 255, 0.8)',   'rgba(220, 53, 69, 0.8)',
-                    'rgba(255, 193, 7, 0.8)',   'rgba(23, 162, 184, 0.8)',  'rgba(108, 117, 125, 0.8)',
-                    'rgba(40, 167, 69, 0.6)',   'rgba(0, 123, 255, 0.6)',   'rgba(220, 53, 69, 0.6)',
-                    'rgba(255, 193, 7, 0.6)',   'rgba(23, 162, 184, 0.6)',  'rgba(108, 117, 125, 0.6)',
-                ];
-                
-                new Chart(ctxOperacionesOtros, {
-                    type: 'pie',
-                    data: {
-                        labels: clientesOtrosFinal,
-                        datasets: [{
-                            label: '% Operaciones OTROS',
-                            data: porcentajesOtrosFinal,
-                            backgroundColor: colorsOtros.slice(0, clientesOtrosFinal.length),
-                            borderColor: '#fff',
-                            borderWidth: 2
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: {
-                            legend: {
-                                display: true,
-                                position: 'right',
-                                labels: {
-                                    padding: 15,
-                                    usePointStyle: true
-                                }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        let label = context.label || '';
-                                        if (label) {
-                                            label += ': ';
-                                        }
-                                        const index = context.dataIndex;
-                                        if (index >= 0 && index < porcentajesOtrosFinal.length) {
-                                            label += porcentajesOtrosFinal[index].toFixed(2) + '%';
-                                            if (operacionesOtrosFinal && index < operacionesOtrosFinal.length) {
-                                                label += ' (' + operacionesOtrosFinal[index] + ' operaciones)';
-                                            } else {
-                                                label += ' (0 operaciones)';
-                                            }
-                                        }
-                                        return label;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-        }
-        
-        // Gráfico de Desglose OTROS - Valor USD
-        const ctxUsdOtros = document.getElementById('chartUsdOtros');
-        if (ctxUsdOtros) {
-            {% if indicadores.porcentajes_usd_otros %}
-            const clientesUsdOtros = [{% for item in indicadores.porcentajes_usd_otros %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
-            const porcentajesUsdOtros = [{% for item in indicadores.porcentajes_usd_otros %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
-            const valoresUsdOtros = [{% for item in indicadores.porcentajes_usd_otros %}{{ item.valor_usd|default:0|floatformat:2 }}{% if not forloop.last %},{% endif %}{% endfor %}];
-            {% else %}
-            const clientesUsdOtros = [];
-            const porcentajesUsdOtros = [];
-            const valoresUsdOtros = [];
-            {% endif %}
-            
-            // Validar que todos los arrays tengan la misma longitud
-            const minLengthUsdOtros = Math.min(clientesUsdOtros.length, porcentajesUsdOtros.length, valoresUsdOtros.length);
-            if (minLengthUsdOtros > 0) {
-                // Asegurar que todos los arrays tengan la misma longitud
-                const clientesUsdOtrosFinal = clientesUsdOtros.slice(0, minLengthUsdOtros);
-                const porcentajesUsdOtrosFinal = porcentajesUsdOtros.slice(0, minLengthUsdOtros);
-                const valoresUsdOtrosFinal = valoresUsdOtros.slice(0, minLengthUsdOtros).map(v => parseFloat(v) || 0);
-                // Colores para desglose de OTROS USD
-                const colorsUsdOtros = [
-                    'rgba(40, 167, 69, 0.8)',   'rgba(0, 123, 255, 0.8)',   'rgba(220, 53, 69, 0.8)',
-                    'rgba(255, 193, 7, 0.8)',   'rgba(23, 162, 184, 0.8)',  'rgba(108, 117, 125, 0.8)',
-                    'rgba(40, 167, 69, 0.6)',   'rgba(0, 123, 255, 0.6)',   'rgba(220, 53, 69, 0.6)',
-                    'rgba(255, 193, 7, 0.6)',   'rgba(23, 162, 184, 0.6)',  'rgba(108, 117, 125, 0.6)',
-                    'rgba(128, 128, 128, 0.6)', // Gris claro (para sin valor)
-                ];
-                
-                new Chart(ctxUsdOtros, {
-                    type: 'pie',
-                    data: {
-                        labels: clientesUsdOtrosFinal,
-                        datasets: [{
-                            label: '% Valor USD OTROS',
-                            data: porcentajesUsdOtrosFinal,
-                            backgroundColor: colorsUsdOtros.slice(0, clientesUsdOtrosFinal.length),
-                            borderColor: '#fff',
-                            borderWidth: 2
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: {
-                            legend: {
-                                display: true,
-                                position: 'right',
-                                labels: {
-                                    padding: 15,
-                                    usePointStyle: true
-                                }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        let label = context.label || '';
-                                        if (label) {
-                                            label += ': ';
-                                        }
-                                        const index = context.dataIndex;
-                                        if (index >= 0 && index < porcentajesUsdOtrosFinal.length) {
-                                            label += porcentajesUsdOtrosFinal[index].toFixed(2) + '%';
-                                            if (valoresUsdOtrosFinal && index < valoresUsdOtrosFinal.length && valoresUsdOtrosFinal[index] > 0) {
-                                                label += ' ($' + valoresUsdOtrosFinal[index].toLocaleString('es-CL', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD)';
                                             } else {
                                                 label += ' (Sin valor USD)';
                                             }

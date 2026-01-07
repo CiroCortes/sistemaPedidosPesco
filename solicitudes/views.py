@@ -11,7 +11,13 @@ import json
 from core.decorators import role_required
 from core.models import Bodega
 from configuracion.models import EstadoWorkflow, TipoSolicitud
-from .forms import SolicitudForm, SolicitudDetalleFormSet, SolicitudEdicionAdminForm
+from .forms import (
+    SolicitudForm, 
+    SolicitudDetalleFormSet, 
+    SolicitudEdicionAdminForm,
+    SolicitudDetalleEdicionFormSet,
+    BultoEdicionFormSet
+)
 from .models import Solicitud
 from .services import crear_solicitud_desde_payload, SolicitudServiceError
 
@@ -84,7 +90,7 @@ def lista_solicitudes(request):
             # Solo prefetch de bultos (el template no usa detalles en la lista)
             Prefetch('bultos', queryset=Bulto.objects.only('id', 'codigo'))
         )
-        .order_by('id')
+        .order_by('-id')
     )
     
     # PASO 5: Paginar (esto ejecuta la query pero Django solo trae 25 registros)
@@ -338,17 +344,17 @@ def detalle_solicitud(request, pk):
             messages.warning(request, 'No tienes bodegas asignadas.')
             return redirect('solicitudes:lista')
         
-        # Verificar que la solicitud tenga detalles pendientes de sus bodegas
+        # Verificar que la solicitud tenga detalles de sus bodegas (sin importar el estado)
+        # Esto permite ver solicitudes que ya fueron procesadas o están en proceso
         tiene_detalles_bodega = solicitud.detalles.filter(
-            bodega__in=bodegas_usuario,
-            estado_bodega='pendiente'
+            bodega__in=bodegas_usuario
         ).exclude(bodega='013').exists()
         
-        if not tiene_detalles_bodega or solicitud.estado != 'pendiente':
-            messages.warning(request, 'No puedes acceder a solicitudes fuera de tu módulo.')
+        if not tiene_detalles_bodega:
+            messages.warning(request, 'No tienes acceso a esta solicitud.')
             return redirect('solicitudes:lista')
             
-    if request.user.es_despacho() and solicitud.estado not in ['en_despacho', 'embalado', 'listo_despacho', 'en_ruta']:
+    elif request.user.es_despacho() and solicitud.estado not in ['en_despacho', 'embalado', 'listo_despacho', 'en_ruta']:
         messages.warning(request, 'No puedes acceder a solicitudes fuera de tu módulo.')
         return redirect('solicitudes:lista')
 
@@ -413,9 +419,15 @@ def detalle_solicitud_ajax(request, pk):
         solicitud = Solicitud.objects.select_related('solicitante').prefetch_related('detalles__bulto', 'bultos__detalles').get(pk=pk)
         
         # Validación de acceso
-        if request.user.es_bodega() and solicitud.estado != 'pendiente':
-            return JsonResponse({'error': 'No tienes acceso a esta solicitud'}, status=403)
-        if request.user.es_despacho() and solicitud.estado not in ['en_despacho', 'embalado', 'listo_despacho', 'en_ruta']:
+        if request.user.es_bodega():
+            # Verificar que tenga detalles de sus bodegas
+            bodegas_usuario = request.user.get_bodegas_codigos()
+            tiene_acceso = solicitud.detalles.filter(
+                bodega__in=bodegas_usuario
+            ).exclude(bodega='013').exists()
+            if not tiene_acceso:
+                return JsonResponse({'error': 'No tienes acceso a esta solicitud'}, status=403)
+        elif request.user.es_despacho() and solicitud.estado not in ['en_despacho', 'embalado', 'listo_despacho', 'en_ruta']:
             return JsonResponse({'error': 'No tienes acceso a esta solicitud'}, status=403)
         
         # Preparar datos de productos con información de bultos
@@ -560,19 +572,42 @@ def api_crear_solicitud_ia(request: HttpRequest) -> HttpResponse:
 @role_required(['admin'])
 def editar_solicitud(request, pk):
     """
-    Permite al admin editar cualquier aspecto de la solicitud.
+    Permite al admin editar cualquier aspecto de la solicitud, incluyendo:
+    - Datos generales de la solicitud
+    - Fechas de preparación de cada producto (para corregir KPIs)
+    - Fechas de embalaje, envío y entrega de bultos (para corregir KPIs)
+    
     Si el estado cambia a 'despachado', finaliza automáticamente los bultos asociados.
     """
     solicitud = get_object_or_404(Solicitud, pk=pk)
     estado_anterior = solicitud.estado  # Guardar estado antes de editar
     
     if request.method == 'POST':
-        form = SolicitudEdicionAdminForm(request.POST, instance=solicitud)
-        formset = SolicitudDetalleFormSet(request.POST, instance=solicitud)
+        print(f"\n{'='*60}")
+        print(f"📝 EDITANDO SOLICITUD #{pk}")
+        print(f"{'='*60}")
         
-        if form.is_valid() and formset.is_valid():
+        form = SolicitudEdicionAdminForm(request.POST, instance=solicitud)
+        formset_detalles = SolicitudDetalleEdicionFormSet(request.POST, instance=solicitud, prefix='detalles')
+        formset_bultos = BultoEdicionFormSet(request.POST, instance=solicitud, prefix='bultos')
+        
+        print(f"✅ Form válido: {form.is_valid()}")
+        print(f"✅ Formset detalles válido: {formset_detalles.is_valid()}")
+        print(f"✅ Formset bultos válido: {formset_bultos.is_valid()}")
+        
+        if not formset_detalles.is_valid():
+            print(f"❌ Errores formset detalles: {formset_detalles.errors}")
+        if not formset_bultos.is_valid():
+            print(f"❌ Errores formset bultos: {formset_bultos.errors}")
+        
+        if form.is_valid() and formset_detalles.is_valid() and formset_bultos.is_valid():
             form.save()
-            formset.save()
+            print(f"💾 Guardando {len(formset_detalles.forms)} detalles...")
+            formset_detalles.save()
+            print(f"💾 Guardando {len(formset_bultos.forms)} bultos...")
+            formset_bultos.save()
+            print(f"✅ Todos los formsets guardados exitosamente")
+            print(f"{'='*60}\n")
             
             # Recargar la solicitud para obtener el estado actualizado del formulario
             solicitud.refresh_from_db()
@@ -663,20 +698,33 @@ def editar_solicitud(request, pk):
                 print(f"   Productos descontados: {resultado_descuento.get('descontados', 0)}")
                 print(f"{'='*60}\n")
             
+            # Limpiar caché del informe para que refleje los cambios
+            from django.core.cache import cache
+            # Limpiar todo el caché de informes (las claves empiezan con 'informe_completo_')
+            # Como no tenemos delete_pattern en locmem, limpiamos todo
+            try:
+                cache.clear()
+                print(f"🗑️  Caché limpiado para reflejar cambios en reportes")
+            except Exception as e:
+                print(f"⚠️  No se pudo limpiar caché: {e}")
+            
             messages.success(request, f'Solicitud #{solicitud.id} actualizada correctamente.')
             return redirect('solicitudes:detalle', pk=solicitud.pk)
     else:
         form = SolicitudEdicionAdminForm(instance=solicitud)
-        formset = SolicitudDetalleFormSet(instance=solicitud)
+        formset_detalles = SolicitudDetalleEdicionFormSet(instance=solicitud, prefix='detalles')
+        formset_bultos = BultoEdicionFormSet(instance=solicitud, prefix='bultos')
     
     bodegas_activas = Bodega.objects.filter(activa=True).order_by('codigo')
     
     context = {
         'form': form,
-        'formset': formset,
+        'formset': formset_detalles,
+        'formset_bultos': formset_bultos,
         'solicitud': solicitud,
         'bodegas': bodegas_activas,
         'es_edicion': True,
+        'es_edicion_avanzada': True,  # Flag para mostrar secciones de fechas
     }
     return render(request, 'solicitudes/formulario.html', context)
 

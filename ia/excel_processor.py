@@ -17,7 +17,11 @@ class ExcelProcessorError(Exception):
     pass
 
 
-def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bool = True) -> List[Dict[str, Any]]:
+def procesar_excel_productos(
+    archivo_bytes: bytes, 
+    enriquecer_con_inventario: bool = True,
+    sin_validacion_stock: bool = False
+) -> List[Dict[str, Any]]:
     """
     Procesa un archivo Excel y extrae los productos (código y cantidad).
     
@@ -29,6 +33,7 @@ def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bo
     Args:
         archivo_bytes: Contenido del archivo Excel en bytes
         enriquecer_con_inventario: Si True, busca descripciones en StockSAP
+        sin_validacion_stock: Si True, asigna bodega 013 a códigos no encontrados en Stock
         
     Returns:
         Lista de productos: [{"codigo": "123", "cantidad": 10, "descripcion": "..."}, ...]
@@ -103,7 +108,13 @@ def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bo
         if enriquecer_con_inventario:
             if DEBUG_MODE:
                 print(f"\n🔍 Enriqueciendo {len(productos)} productos desde Stock...")
-            productos = _enriquecer_con_inventario(productos, codigos_sin_descripcion)
+                if sin_validacion_stock:
+                    print(f"   🔓 Modo: Sin validación de stock activado")
+            productos = _enriquecer_con_inventario(
+                productos, 
+                codigos_sin_descripcion,
+                sin_validacion_stock=sin_validacion_stock
+            )
             
             # Logging solo en modo desarrollo (optimización: evitar prints en producción)
             if DEBUG_MODE:
@@ -113,7 +124,8 @@ def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bo
                         if prod.get('_bodegas_alternativas'):
                             print(f"      Alternativas: {', '.join(prod['_bodegas_alternativas'])}")
                     elif prod.get('_sin_stock'):
-                        print(f"   ⚠️  {prod['codigo']}: Sin stock disponible (orden especial)")
+                        bodega_info = f"Bodega {prod.get('bodega', 'N/A')}" if prod.get('bodega') else "Sin bodega"
+                        print(f"   ⚠️  {prod['codigo']}: Sin stock - {bodega_info}")
                     else:
                         print(f"   ℹ️  {prod['codigo']}: Bodega {prod.get('bodega', 'N/A')} (manual)")
         
@@ -125,7 +137,11 @@ def procesar_excel_productos(archivo_bytes: bytes, enriquecer_con_inventario: bo
         raise ExcelProcessorError(f"Error al leer el archivo Excel: {str(e)}")
 
 
-def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: List[str]) -> List[Dict]:
+def _enriquecer_con_inventario(
+    productos: List[Dict], 
+    codigos_sin_descripcion: List[str],
+    sin_validacion_stock: bool = False
+) -> List[Dict]:
     """
     Busca las descripciones y bodegas de los códigos en la tabla Stock.
     SIEMPRE busca en Stock, incluso si ya tiene descripción.
@@ -134,6 +150,7 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
     Args:
         productos: Lista de productos a enriquecer
         codigos_sin_descripcion: Códigos que necesitan descripción (legacy)
+        sin_validacion_stock: Si True, asigna bodega 013 a códigos no encontrados en Stock
         
     Returns:
         Lista de productos enriquecida con descripciones y bodegas
@@ -269,15 +286,23 @@ def _enriquecer_con_inventario(productos: List[Dict], codigos_sin_descripcion: L
                         else:
                             producto['_bodegas_alternativas'] = []
                 else:
-                    # Si no hay stock en ninguna bodega, dejar vacío
-                    # El sistema lo tratará como orden especial
-                    producto['bodega'] = ''
-                    producto['_sin_stock'] = True
-                    # OPTIMIZACIÓN: Usar datos pre-calculados del cache en lugar de queries individuales
-                    stock_total = stock_totales_cache.get(codigo, 0)
-                    bodegas_con_stock = bodegas_con_stock_cache.get(codigo, [])
-                    if DEBUG_MODE:
-                        print(f"   ⚠️  {codigo}: Sin stock en bodegas activas. Stock total en BD: {stock_total}, Bodegas con stock: {', '.join(bodegas_con_stock) if bodegas_con_stock else 'NINGUNA'}")
+                    # Si no hay stock en ninguna bodega
+                    if sin_validacion_stock:
+                        # MODO SIN VALIDACIÓN: Asignar bodega 013 automáticamente
+                        producto['bodega'] = '013'
+                        producto['_sin_stock'] = True
+                        producto['_sin_validacion'] = True  # Flag para identificar que se asignó sin validar
+                        if DEBUG_MODE:
+                            print(f"   🔓 {codigo}: Asignado a bodega 013 (sin validación de stock)")
+                    else:
+                        # MODO NORMAL: Dejar vacío, el sistema lo tratará como orden especial
+                        producto['bodega'] = ''
+                        producto['_sin_stock'] = True
+                        # OPTIMIZACIÓN: Usar datos pre-calculados del cache en lugar de queries individuales
+                        stock_total = stock_totales_cache.get(codigo, 0)
+                        bodegas_con_stock = bodegas_con_stock_cache.get(codigo, [])
+                        if DEBUG_MODE:
+                            print(f"   ⚠️  {codigo}: Sin stock en bodegas activas. Stock total en BD: {stock_total}, Bodegas con stock: {', '.join(bodegas_con_stock) if bodegas_con_stock else 'NINGUNA'}")
         
         return productos
         

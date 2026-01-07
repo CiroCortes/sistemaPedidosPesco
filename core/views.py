@@ -58,9 +58,13 @@ def dashboard(request):
     Muestra diferentes métricas según el rol del usuario
     """
     user = request.user
+    
+    # Obtener fecha actual en zona horaria de Chile
+    fecha_chile = timezone.localtime(timezone.now())
+    
     context = {
         'user': user,
-        'hoy': timezone.now().date(),
+        'hoy': fecha_chile.date(),
     }
     
     # Obtener parámetros de filtro

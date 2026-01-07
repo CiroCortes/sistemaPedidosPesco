@@ -191,6 +191,7 @@
                         <th>Hora</th>
                         <th>Tipo</th>
                         <th>N° Pedido</th>
+                        <th>Cliente</th>
                         <th>Código</th>
                         <th>Descripción</th>
                         <th>Cantidad</th>
@@ -203,6 +204,7 @@
                         <th>N° Guía</th>
                         <th>Transporte</th>
                         <th>N° OT</th>
+                        <th>Estado</th>
                         <th>Fecha Despacho</th>
                         <th>Hora Despacho</th>
                         <th>N° Bulto</th>
@@ -227,6 +229,8 @@
                         <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="16" placeholder="Filtrar..."></th>
                         <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="17" placeholder="Filtrar..."></th>
                         <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="18" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="19" placeholder="Filtrar..."></th>
+                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="20" placeholder="Filtrar..."></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -236,6 +240,7 @@
                         <td>{{ registro.hora_ingreso|default:"-" }}</td>
                         <td>{{ registro.tipo }}</td>
                         <td>{{ registro.numero_pedido|default:"-" }}</td>
+                        <td>{{ registro.cliente|default:"-" }}</td>
                         <td>{{ registro.codigo }}</td>
                         <td>{{ registro.descripcion|default:"-" }}</td>
                         <td class="text-center">{{ registro.cantidad }}</td>
@@ -248,6 +253,7 @@
                         <td>{{ registro.numero_guia|default:"-" }}</td>
                         <td>{{ registro.transporte|default:"-" }}</td>
                         <td>{{ registro.numero_ot|default:"-" }}</td>
+                        <td>{{ registro.estado_linea|default:"Pendiente" }}</td>
                         <td>{{ registro.fecha_despacho|default:"-" }}</td>
                         <td>{{ registro.hora_despacho|default:"-" }}</td>
                         <td>{{ registro.numero_bulto|default:"-" }}</td>

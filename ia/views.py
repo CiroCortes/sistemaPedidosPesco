@@ -31,6 +31,7 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
         texto = request.POST.get("mensaje", "").strip()
         imagen_archivo = request.FILES.get("imagen")
         excel_archivo = request.FILES.get("excel")  # NUEVO
+        sin_validacion_stock = request.POST.get("sin_validacion_stock") == "1"  # NUEVO
 
         if not texto and not imagen_archivo and not excel_archivo:
             messages.error(request, "Debes ingresar texto, adjuntar una imagen o un archivo Excel.")
@@ -41,11 +42,21 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
         if excel_archivo:
             try:
                 excel_bytes = excel_archivo.read()
-                productos_excel = procesar_excel_productos(excel_bytes)
-                messages.info(
-                    request,
-                    f"✅ Excel procesado: {len(productos_excel)} productos detectados."
+                productos_excel = procesar_excel_productos(
+                    excel_bytes, 
+                    sin_validacion_stock=sin_validacion_stock
                 )
+                
+                if sin_validacion_stock:
+                    messages.info(
+                        request,
+                        f"✅ Excel procesado: {len(productos_excel)} productos detectados (sin validación de stock)."
+                    )
+                else:
+                    messages.info(
+                        request,
+                        f"✅ Excel procesado: {len(productos_excel)} productos detectados."
+                    )
             except ExcelProcessorError as e:
                 messages.error(request, f"Error al procesar Excel: {e}")
                 return render(request, "ia/chat.html", contexto)
@@ -69,16 +80,28 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
         # Si hay productos del Excel, reemplazar los del payload
         if productos_excel:
             payload["productos"] = productos_excel
-            messages.info(
-                request,
-                f"ℹ️ Usando {len(productos_excel)} productos del archivo Excel."
-            )
+            if sin_validacion_stock:
+                messages.info(
+                    request,
+                    f"ℹ️ Usando {len(productos_excel)} productos del archivo Excel (sin validación de stock)."
+                )
+            else:
+                messages.info(
+                    request,
+                    f"ℹ️ Usando {len(productos_excel)} productos del archivo Excel."
+                )
         # Si NO hay productos del Excel, enriquecer los productos del payload de Gemini
         elif payload.get("productos"):
             from .excel_processor import _enriquecer_con_inventario
             print(f"\n🔍 Enriqueciendo {len(payload['productos'])} productos desde Gemini...")
+            if sin_validacion_stock:
+                print(f"   🔓 Modo: Sin validación de stock activado")
             productos_gemini = payload["productos"]
-            productos_enriquecidos = _enriquecer_con_inventario(productos_gemini, [])
+            productos_enriquecidos = _enriquecer_con_inventario(
+                productos_gemini, 
+                [],
+                sin_validacion_stock=sin_validacion_stock
+            )
             payload["productos"] = productos_enriquecidos
             
             # Logging para debugging
@@ -88,7 +111,8 @@ def ia_chat(request: HttpRequest) -> HttpResponse:
                     if prod.get('_bodegas_alternativas'):
                         print(f"      Alternativas: {', '.join(prod['_bodegas_alternativas'])}")
                 elif prod.get('_sin_stock'):
-                    print(f"   ⚠️  {prod['codigo']}: Sin stock disponible (orden especial)")
+                    bodega_info = f"Bodega {prod.get('bodega', 'N/A')}" if prod.get('bodega') else "Sin bodega"
+                    print(f"   ⚠️  {prod['codigo']}: Sin stock - {bodega_info}")
                 else:
                     print(f"   ℹ️  {prod['codigo']}: Bodega {prod.get('bodega', 'N/A')} (manual)")
 
