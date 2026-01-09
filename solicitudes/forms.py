@@ -236,8 +236,9 @@ SolicitudDetalleEdicionFormSet = inlineformset_factory(
     Solicitud,
     SolicitudDetalle,
     form=SolicitudDetalleEdicionAdminForm,
-    extra=0,  # No agregar líneas extras en edición
-    can_delete=False,  # No permitir eliminar detalles (mantener integridad)
+    extra=1,  # Agregar 1 línea extra para nuevos códigos
+    can_delete=True,  # Permitir eliminar detalles
+    max_num=45,  # Máximo 45 productos
 )
 
 

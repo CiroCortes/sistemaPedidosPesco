@@ -234,12 +234,12 @@ input[readonly] {
             <div class="mt-5 border-top pt-4">
                 <h5 class="mb-3">
                     <i class="bi bi-clock-history me-2"></i>
-                    Fechas de Preparación de Productos
-                    <span class="badge bg-warning text-dark">Control de KPIs</span>
+                    Edición de Productos y Fechas de Preparación
+                    <span class="badge bg-warning text-dark">Control Completo</span>
                 </h5>
                 <p class="text-muted small">
-                    Ajusta las fechas y horas de preparación si hubo errores en el registro. 
-                    Esto afecta directamente los KPIs de tiempo de preparación.
+                    Edita códigos, cantidades, bodegas y ajusta las fechas/horas de preparación si hubo errores. 
+                    También puedes agregar o eliminar productos. Esto afecta directamente los KPIs.
                 </p>
                 
                 {{ formset.management_form }}
@@ -248,35 +248,92 @@ input[readonly] {
                     <table class="table table-sm table-bordered">
                         <thead class="table-light">
                             <tr>
-                                <th>Código</th>
+                                <th style="width: 150px;">Código</th>
                                 <th>Descripción</th>
-                                <th>Cantidad</th>
-                                <th>Bodega</th>
-                                <th>Estado</th>
+                                <th style="width: 100px;">Cantidad</th>
+                                <th style="width: 200px;">Bodega</th>
+                                <th style="width: 120px;">Estado</th>
                                 <th style="min-width: 200px;">Fecha/Hora Preparación</th>
+                                <th style="width: 80px;">Eliminar</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="detalle-rows-edicion">
                             {% for form in formset %}
                             <tr>
                                 <td>
                                     {{ form.id }}
                                     {{ form.codigo }}
+                                    {% if form.codigo.errors %}
+                                        <div class="text-danger small">{{ form.codigo.errors|striptags }}</div>
+                                    {% endif %}
                                 </td>
-                                <td>{{ form.descripcion }}</td>
-                                <td>{{ form.cantidad }}</td>
-                                <td>{{ form.bodega }}</td>
-                                <td>{{ form.estado_bodega }}</td>
+                                <td>
+                                    {{ form.descripcion }}
+                                    {% if form.descripcion.errors %}
+                                        <div class="text-danger small">{{ form.descripcion.errors|striptags }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ form.cantidad }}
+                                    {% if form.cantidad.errors %}
+                                        <div class="text-danger small">{{ form.cantidad.errors|striptags }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ form.bodega }}
+                                    {% if form.bodega.errors %}
+                                        <div class="text-danger small">{{ form.bodega.errors|striptags }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ form.estado_bodega }}
+                                    {% if form.estado_bodega.errors %}
+                                        <div class="text-danger small">{{ form.estado_bodega.errors|striptags }}</div>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {{ form.fecha_preparacion }}
                                     {% if form.fecha_preparacion.errors %}
                                     <div class="text-danger small">{{ form.fecha_preparacion.errors|striptags }}</div>
                                     {% endif %}
                                 </td>
+                                <td class="text-center">
+                                    {% if form.DELETE %}
+                                        <div class="form-check">
+                                            {{ form.DELETE }}
+                                            <label class="form-check-label small">Borrar</label>
+                                        </div>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
+                        <tbody id="empty-form-template-edicion" class="d-none">
+                            <tr>
+                                <td>{{ formset.empty_form.codigo }} {{ formset.empty_form.id }}</td>
+                                <td>{{ formset.empty_form.descripcion }}</td>
+                                <td>{{ formset.empty_form.cantidad }}</td>
+                                <td>{{ formset.empty_form.bodega }}</td>
+                                <td>{{ formset.empty_form.estado_bodega }}</td>
+                                <td>{{ formset.empty_form.fecha_preparacion }}</td>
+                                <td class="text-center">
+                                    {% if formset.empty_form.DELETE %}
+                                        <div class="form-check">
+                                            {{ formset.empty_form.DELETE }}
+                                            <label class="form-check-label small">Borrar</label>
+                                        </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </tbody>
                     </table>
+                </div>
+                
+                <div class="mt-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnAgregarLineaEdicion">
+                        <i class="bi bi-plus-circle me-1"></i>Agregar línea
+                    </button>
+                    <small class="text-muted ms-2">Agrega nuevos productos según necesites (máximo 45).</small>
                 </div>
             </div>
 
@@ -687,6 +744,127 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!confirm('⚠️ Hay inconsistencias en las fechas que pueden afectar los KPIs.\n\n¿Deseas guardar de todas formas?')) {
                 e.preventDefault();
             }
+        }
+    });
+});
+
+// ============================================================
+// AGREGAR/ELIMINAR LÍNEAS DE PRODUCTOS EN EDICIÓN AVANZADA
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    const btnAgregarEdicion = document.getElementById('btnAgregarLineaEdicion');
+    const tbodyEdicion = document.getElementById('detalle-rows-edicion');
+    const templateEdicion = document.querySelector('#empty-form-template-edicion tr');
+    const totalFormsInputEdicion = document.getElementById('id_detalles-TOTAL_FORMS');
+    const maxForms = 45;
+
+    if (!btnAgregarEdicion || !tbodyEdicion || !templateEdicion || !totalFormsInputEdicion) return;
+
+    console.log('🔧 Sistema de edición avanzada de productos inicializado');
+
+    // Función para buscar código en stock (versión simplificada para edición)
+    function buscarCodigoEnStockEdicion(codigoInput) {
+        const codigo = codigoInput.value.trim().toUpperCase();
+        if (!codigo || codigo.length < 3) return;
+
+        const row = codigoInput.closest('tr');
+        const descripcionInput = row.querySelector('[name*="descripcion"]');
+        const bodegaSelect = row.querySelector('[name*="bodega"]');
+        
+        console.log('🔍 Buscando código en edición:', codigo);
+
+        fetch('/solicitudes/api/buscar-codigo/?codigo=' + encodeURIComponent(codigo))
+            .then(response => response.json())
+            .then(data => {
+                console.log('📦 Respuesta:', data);
+                
+                if (data.success) {
+                    // Autocompletar descripción
+                    if (descripcionInput && !descripcionInput.value) {
+                        descripcionInput.value = data.descripcion || '';
+                    }
+                    
+                    // Actualizar opciones de bodega si hay stock
+                    if (data.bodegas && data.bodegas.length > 0 && bodegaSelect) {
+                        const emptyOption = bodegaSelect.querySelector('option[value=""]');
+                        const currentValue = bodegaSelect.value;
+                        
+                        // Limpiar y reconstruir opciones
+                        bodegaSelect.innerHTML = '';
+                        if (emptyOption) {
+                            bodegaSelect.appendChild(emptyOption.cloneNode(true));
+                        }
+                        
+                        data.bodegas.forEach(b => {
+                            const option = new Option(
+                                `${b.codigo_bodega} · ${b.nombre_bodega} (Stock: ${b.stock_disponible})`, 
+                                b.codigo_bodega
+                            );
+                            bodegaSelect.add(option);
+                        });
+                        
+                        // Mantener selección previa si es válida, sino seleccionar primera con stock
+                        if (currentValue && data.bodegas.some(b => b.codigo_bodega === currentValue)) {
+                            bodegaSelect.value = currentValue;
+                        } else if (data.bodegas.length === 1) {
+                            bodegaSelect.value = data.bodegas[0].codigo_bodega;
+                        }
+                    }
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }
+
+    // Agregar eventos a inputs existentes
+    tbodyEdicion.querySelectorAll('[name*="codigo"]').forEach(input => {
+        input.addEventListener('blur', function() {
+            buscarCodigoEnStockEdicion(this);
+        });
+        input.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    });
+
+    // Agregar nueva línea
+    btnAgregarEdicion.addEventListener('click', function() {
+        let total = parseInt(totalFormsInputEdicion.value || '0', 10);
+        if (total >= maxForms) {
+            alert('Ya alcanzaste el máximo de 45 líneas de productos.');
+            return;
+        }
+
+        const newRow = templateEdicion.cloneNode(true);
+        let html = newRow.innerHTML.replace(/__prefix__/g, total);
+        newRow.innerHTML = html;
+        
+        // Agregar eventos a los nuevos inputs
+        const codigoInput = newRow.querySelector('[name*="codigo"]');
+        const bodegaSelect = newRow.querySelector('[name*="bodega"]');
+        
+        if (codigoInput) {
+            codigoInput.addEventListener('blur', function() {
+                buscarCodigoEnStockEdicion(this);
+            });
+            codigoInput.addEventListener('input', function() {
+                this.value = this.value.toUpperCase();
+            });
+        }
+        
+        if (bodegaSelect) {
+            bodegaSelect.addEventListener('change', function() {
+                this.style.borderColor = '';
+                this.style.borderWidth = '';
+            });
+        }
+        
+        tbodyEdicion.appendChild(newRow);
+        totalFormsInputEdicion.value = total + 1;
+        
+        console.log('➕ Nueva línea agregada. Total:', total + 1);
+        
+        // Enfocar el nuevo input de código
+        if (codigoInput) {
+            codigoInput.focus();
         }
     });
 });
