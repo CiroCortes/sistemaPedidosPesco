@@ -11,12 +11,70 @@ from django.db.models import Count, Q, Avg, Min, Max, Sum, F, ExpressionWrapper,
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.core.cache import cache
-from datetime import timedelta
+from datetime import timedelta, datetime
 from decimal import Decimal
 from solicitudes.models import Solicitud, SolicitudDetalle
 from despacho.models import Bulto
 from bodega.models import Stock
 from .models import Usuario
+from configuracion.models import TransporteConfig
+
+
+def calcular_horas_laborales(fecha_inicio, fecha_fin):
+    """
+    Calcula las horas laborales entre dos fechas.
+    Considera solo días hábiles (lunes a viernes) y 8 horas por día.
+    
+    Args:
+        fecha_inicio: datetime - Fecha de inicio
+        fecha_fin: datetime - Fecha de fin
+        
+    Returns:
+        float: Total de horas laborales
+    """
+    if not fecha_inicio or not fecha_fin:
+        return 0
+    
+    # Asegurar que trabajamos con fechas aware en la zona horaria local
+    if timezone.is_aware(fecha_inicio):
+        fecha_inicio = timezone.localtime(fecha_inicio)
+    if timezone.is_aware(fecha_fin):
+        fecha_fin = timezone.localtime(fecha_fin)
+    
+    # Si fecha_fin es menor que fecha_inicio, retornar 0
+    if fecha_fin < fecha_inicio:
+        return 0
+    
+    total_horas = 0
+    fecha_actual = fecha_inicio.replace(hour=0, minute=0, second=0, microsecond=0)
+    fecha_limite = fecha_fin.replace(hour=23, minute=59, second=59, microsecond=999999)
+    
+    while fecha_actual <= fecha_limite:
+        # Solo contar días laborales (lunes=0 a viernes=4)
+        if fecha_actual.weekday() < 5:  # 0-4 = lunes a viernes
+            # Si es el primer día
+            if fecha_actual.date() == fecha_inicio.date():
+                # Calcular desde la hora de inicio hasta el fin del día (máx 8 horas)
+                hora_inicio = fecha_inicio.hour + fecha_inicio.minute / 60 + fecha_inicio.second / 3600
+                # Si termina el mismo día
+                if fecha_actual.date() == fecha_fin.date():
+                    hora_fin = fecha_fin.hour + fecha_fin.minute / 60 + fecha_fin.second / 3600
+                    total_horas += min(8, hora_fin - hora_inicio)
+                else:
+                    # Contar desde hora_inicio hasta fin de jornada (8 horas max desde inicio del día laboral)
+                    total_horas += min(8, 24 - hora_inicio)
+            # Si es el último día (pero no el primero)
+            elif fecha_actual.date() == fecha_fin.date():
+                hora_fin = fecha_fin.hour + fecha_fin.minute / 60 + fecha_fin.second / 3600
+                total_horas += min(8, hora_fin)
+            # Días intermedios: 8 horas laborales
+            else:
+                total_horas += 8
+        
+        # Avanzar al siguiente día
+        fecha_actual += timedelta(days=1)
+    
+    return total_horas
 
 
 def login_view(request):
@@ -234,8 +292,10 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     fecha_inicio = ahora - timedelta(days=periodo_dias)
     
     # Base queryset para solicitudes del período
+    # Solo considerar solicitudes DESPACHADAS (trabajo completado)
     solicitudes_base = Solicitud.objects.filter(
-        created_at__gte=fecha_inicio
+        created_at__gte=fecha_inicio,
+        estado='despachado'  # Solo solicitudes despachadas
     )
     
     # 1. LEAD TIME DE PREPARACIÓN
@@ -352,110 +412,106 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'porcentaje': round(porcentaje_otros, 2)
         })
     
-    # Estadísticas de valor USD por cliente
-    # Obtener todos los detalles del período con sus códigos
-    detalles_periodo = SolicitudDetalle.objects.filter(
+    # Estadísticas de kilos volumétricos por cliente
+    # Obtener todos los bultos de las solicitudes del período
+    from despacho.models import Bulto
+    
+    bultos_periodo = Bulto.objects.filter(
         solicitud__in=solicitudes_base
     ).select_related('solicitud')
     
-    # Recopilar códigos únicos para batch query de precios
-    codigos_clientes = set()
-    detalles_por_cliente = defaultdict(list)
+    # Calcular kilos volumétricos por cliente
+    kilos_por_cliente = defaultdict(lambda: Decimal('0.00'))
+    kilos_otros_detalle = defaultdict(lambda: Decimal('0.00'))
+    clientes_sin_medidas = set()
+    clientes_otros_sin_medidas = set()
     
-    for detalle in detalles_periodo:
-        codigos_clientes.add(detalle.codigo)
-        detalles_por_cliente[detalle.solicitud.cliente].append(detalle)
-    
-    # Batch query para obtener precios
-    precios_cache_clientes = {}
-    if codigos_clientes:
-        stocks = Stock.objects.filter(codigo__in=codigos_clientes).values('codigo', 'precio')
-        for stock in stocks:
-            if stock['codigo'] not in precios_cache_clientes and stock.get('precio'):
-                precios_cache_clientes[stock['codigo']] = stock['precio']
-    
-    # Calcular valor USD por cliente
-    valores_por_cliente = defaultdict(lambda: Decimal('0.00'))
-    valores_otros_detalle = defaultdict(lambda: Decimal('0.00'))
-    clientes_sin_valor = set()
-    clientes_otros_sin_valor = set()
-    
-    for cliente, detalles in detalles_por_cliente.items():
-        tiene_valor = False
-        valor_cliente = Decimal('0.00')
+    for bulto in bultos_periodo:
+        cliente = bulto.solicitud.cliente
         
-        for detalle in detalles:
-            precio = precios_cache_clientes.get(detalle.codigo)
-            if precio:
-                valor = Decimal(str(precio)) * detalle.cantidad
-                valor_cliente += valor
-                tiene_valor = True
+        # Calcular peso volumétrico
+        # Fórmula: (largo × ancho × alto en cm) / 6000
+        if bulto.largo_cm and bulto.ancho_cm and bulto.alto_cm and \
+           bulto.largo_cm > 0 and bulto.ancho_cm > 0 and bulto.alto_cm > 0:
+            volumen_cm3 = bulto.largo_cm * bulto.ancho_cm * bulto.alto_cm
+            peso_volumetrico = volumen_cm3 / Decimal('6000')
+            
+            # Peso cobrable = mayor entre real y volumétrico
+            peso_real = bulto.peso_total if bulto.peso_total else Decimal('0.00')
+            peso_cobrable = max(peso_real, peso_volumetrico)
+        else:
+            # Si no tiene dimensiones, usar solo peso real
+            peso_cobrable = bulto.peso_total if bulto.peso_total else Decimal('0.00')
+            if peso_cobrable == 0:
+                # Marcar como sin medidas
+                if normalizar_cliente(cliente):
+                    clientes_sin_medidas.add(cliente)
+                else:
+                    clientes_otros_sin_medidas.add(cliente)
+                continue  # No sumar bultos sin peso ni dimensiones
         
+        # Agrupar por sucursal normalizada
         sucursal_norm = normalizar_cliente(cliente)
         
         if sucursal_norm:
             # Es una sucursal
-            valores_por_cliente[sucursal_norm] += valor_cliente
-            if not tiene_valor:
-                clientes_sin_valor.add(cliente)
+            kilos_por_cliente[sucursal_norm] += peso_cobrable
         else:
             # Es un cliente OTROS
-            valores_otros_detalle[cliente] = valor_cliente
-            if not tiene_valor:
-                clientes_otros_sin_valor.add(cliente)
+            kilos_otros_detalle[cliente] += peso_cobrable
     
-    # Calcular total USD y porcentajes agrupados
-    total_usd = sum(valores_por_cliente.values()) + sum(valores_otros_detalle.values())
-    porcentajes_usd = []
+    # Calcular total de kilos y porcentajes agrupados
+    total_kilos = sum(kilos_por_cliente.values()) + sum(kilos_otros_detalle.values())
+    porcentajes_kilos = []
     
-    # Agregar sucursales con valor USD
-    for sucursal, valor_usd in sorted(valores_por_cliente.items(), key=lambda x: x[1], reverse=True):
-        if valor_usd > 0:
-            porcentaje = (float(valor_usd) / float(total_usd) * 100) if total_usd > 0 else 0
-            porcentajes_usd.append({
+    # Agregar sucursales con kilos
+    for sucursal, kilos in sorted(kilos_por_cliente.items(), key=lambda x: x[1], reverse=True):
+        if kilos > 0:
+            porcentaje = (float(kilos) / float(total_kilos) * 100) if total_kilos > 0 else 0
+            porcentajes_kilos.append({
                 'cliente': sucursal,
-                'valor_usd': float(valor_usd),
+                'kilos_volumetricos': float(kilos),
                 'porcentaje': round(porcentaje, 2)
             })
     
     # Agregar OTROS (suma de todos los clientes no sucursales)
-    total_otros_usd = sum(valores_otros_detalle.values())
-    if total_otros_usd > 0:
-        porcentaje_otros = (float(total_otros_usd) / float(total_usd) * 100) if total_usd > 0 else 0
-        porcentajes_usd.append({
+    total_otros_kilos = sum(kilos_otros_detalle.values())
+    if total_otros_kilos > 0:
+        porcentaje_otros = (float(total_otros_kilos) / float(total_kilos) * 100) if total_kilos > 0 else 0
+        porcentajes_kilos.append({
             'cliente': 'OTROS',
-            'valor_usd': float(total_otros_usd),
+            'kilos_volumetricos': float(total_otros_kilos),
             'porcentaje': round(porcentaje_otros, 2)
         })
     
-    # Agregar clientes sin valor USD (como RRHH, sucursales internas, etc.)
-    todos_sin_valor = clientes_sin_valor | clientes_otros_sin_valor
-    if todos_sin_valor:
-        porcentajes_usd.append({
-            'cliente': 'Sin valor USD (RRHH, internos, etc.)',
-            'valor_usd': 0.0,
+    # Agregar clientes sin medidas (para información)
+    todos_sin_medidas = clientes_sin_medidas | clientes_otros_sin_medidas
+    if todos_sin_medidas:
+        porcentajes_kilos.append({
+            'cliente': 'Sin medidas (retiro cliente, etc.)',
+            'kilos_volumetricos': 0.0,
             'porcentaje': 0.0,
-            'cantidad_clientes': len(todos_sin_valor)
+            'cantidad_clientes': len(todos_sin_medidas)
         })
     
-    # Crear desglose detallado de OTROS (para el tercer gráfico)
-    porcentajes_otros_detalle = []
-    for cliente, valor_usd in sorted(valores_otros_detalle.items(), key=lambda x: x[1], reverse=True):
-        if valor_usd > 0:
-            porcentaje = (float(valor_usd) / float(total_otros_usd) * 100) if total_otros_usd > 0 else 0
-            porcentajes_otros_detalle.append({
+    # Crear desglose detallado de OTROS
+    porcentajes_otros_detalle_kilos = []
+    for cliente, kilos in sorted(kilos_otros_detalle.items(), key=lambda x: x[1], reverse=True):
+        if kilos > 0:
+            porcentaje = (float(kilos) / float(total_otros_kilos) * 100) if total_otros_kilos > 0 else 0
+            porcentajes_otros_detalle_kilos.append({
                 'cliente': cliente,
-                'valor_usd': float(valor_usd),
+                'kilos_volumetricos': float(kilos),
                 'porcentaje': round(porcentaje, 2)
             })
     
-    # Agregar clientes OTROS sin valor USD al desglose
-    if clientes_otros_sin_valor:
-        porcentajes_otros_detalle.append({
-            'cliente': 'Sin valor USD (RRHH, internos, etc.)',
-            'valor_usd': 0.0,
+    # Agregar clientes OTROS sin medidas al desglose
+    if clientes_otros_sin_medidas:
+        porcentajes_otros_detalle_kilos.append({
+            'cliente': 'Sin medidas (retiro cliente, etc.)',
+            'kilos_volumetricos': 0.0,
             'porcentaje': 0.0,
-            'cantidad_clientes': len(clientes_otros_sin_valor)
+            'cantidad_clientes': len(clientes_otros_sin_medidas)
         })
     
     # 2. LEAD TIME DE EMBALAJE
@@ -539,7 +595,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         )
     
     # Agrupar por transporte y calcular métricas
-    codigos_por_transporte = {}
+    solicitudes_por_transporte = {}
     
     # Primero, recopilar todos los códigos únicos para hacer batch query de precios
     todos_codigos = set()
@@ -569,43 +625,61 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # Ahora procesar los bultos con datos precargados
     for bulto, detalles in detalles_por_bulto.values():
         # Determinar transporte (prioridad: transportista_extra > transportista > solicitud.transporte)
-        transporte = bulto.transportista_extra or bulto.transportista or bulto.solicitud.transporte or 'Sin transporte'
+        transporte_slug = bulto.transportista_extra or bulto.transportista or bulto.solicitud.transporte or 'Sin transporte'
+        # Obtener nombre legible del transporte usando la configuración
+        transporte = TransporteConfig.etiqueta(transporte_slug) if transporte_slug != 'Sin transporte' else 'Sin transporte'
         
-        if transporte not in codigos_por_transporte:
-            codigos_por_transporte[transporte] = {
-                'codigos': set(),
-                'dias': [],
+        if transporte not in solicitudes_por_transporte:
+            solicitudes_por_transporte[transporte] = {
+                'solicitudes': set(),
+                'horas_laborales': [],
+                'dias_calendario': [],
                 'valor_usd': Decimal('0.00')
             }
         
+        # Agregar la solicitud única (no por cada detalle)
+        solicitudes_por_transporte[transporte]['solicitudes'].add(bulto.solicitud.id)
+        
+        # Calcular horas laborales y días calendario desde fecha_embalaje
+        if bulto.fecha_embalaje:
+            # Horas laborales (excluyendo fines de semana, 8h/día)
+            horas_lab = calcular_horas_laborales(bulto.fecha_embalaje, ahora)
+            solicitudes_por_transporte[transporte]['horas_laborales'].append(horas_lab)
+            
+            # Días calendario (para referencia)
+            dias_cal = (ahora - bulto.fecha_embalaje).total_seconds() / 86400
+            solicitudes_por_transporte[transporte]['dias_calendario'].append(dias_cal)
+        
+        # Valorizar todos los detalles del bulto
         for detalle in detalles:
-            codigos_por_transporte[transporte]['codigos'].add(detalle.codigo)
-            
-            # Calcular días desde fecha_embalaje
-            if bulto.fecha_embalaje:
-                dias = (ahora - bulto.fecha_embalaje).total_seconds() / 86400
-                codigos_por_transporte[transporte]['dias'].append(dias)
-            
-            # Valorizar: usar precio del cache
             precio = precios_cache.get(detalle.codigo)
             if precio:
                 valor = Decimal(str(precio)) * detalle.cantidad
-                codigos_por_transporte[transporte]['valor_usd'] += valor
+                solicitudes_por_transporte[transporte]['valor_usd'] += valor
     
-    # Formatear datos de códigos en despacho
-    codigos_despacho = []
-    for transporte, datos in codigos_por_transporte.items():
-        codigos_despacho.append({
+    # Formatear datos de solicitudes en despacho
+    solicitudes_despacho = []
+    for transporte, datos in solicitudes_por_transporte.items():
+        # Calcular promedios
+        horas_prom = sum(datos['horas_laborales']) / len(datos['horas_laborales']) if datos['horas_laborales'] else 0
+        dias_lab_prom = horas_prom / 8  # Convertir horas a días laborales (8h = 1 día)
+        dias_cal_prom = sum(datos['dias_calendario']) / len(datos['dias_calendario']) if datos['dias_calendario'] else 0
+        
+        solicitudes_despacho.append({
             'transporte': transporte,
-            'cantidad_codigos': len(datos['codigos']),
+            'cantidad_solicitudes': len(datos['solicitudes']),
             'valor_usd': datos['valor_usd'],
-            'dias_promedio': sum(datos['dias']) / len(datos['dias']) if datos['dias'] else 0,
-            'dias_min': min(datos['dias']) if datos['dias'] else 0,
-            'dias_max': max(datos['dias']) if datos['dias'] else 0,
+            'horas_laborales': horas_prom,
+            'dias_laborales': dias_lab_prom,
+            'dias_calendario': dias_cal_prom,
+            'horas_min': min(datos['horas_laborales']) if datos['horas_laborales'] else 0,
+            'horas_max': max(datos['horas_laborales']) if datos['horas_laborales'] else 0,
+            'dias_min': min(datos['horas_laborales']) / 8 if datos['horas_laborales'] else 0,
+            'dias_max': max(datos['horas_laborales']) / 8 if datos['horas_laborales'] else 0,
         })
     
-    # Ordenar por cantidad de códigos descendente
-    codigos_despacho.sort(key=lambda x: x['cantidad_codigos'], reverse=True)
+    # Ordenar por cantidad de solicitudes descendente
+    solicitudes_despacho.sort(key=lambda x: x['cantidad_solicitudes'], reverse=True)
     
     # Obtener lista de transportes únicos para el dropdown
     transportes_disponibles = list(set(
@@ -646,15 +720,15 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'max_dias': lt_total_max / 24,
             'total_registros': len(lead_times_total)
         },
-        'codigos_en_despacho': codigos_despacho,
+        'solicitudes_en_despacho': solicitudes_despacho,
         'transportes_disponibles': transportes_disponibles,
         'periodo_dias': periodo_dias,
         # Estadísticas por cliente (agrupadas: sucursales + OTROS)
         'porcentajes_operaciones_cliente': porcentajes_operaciones,
-        'porcentajes_usd_cliente': porcentajes_usd,
+        'porcentajes_kilos_cliente': porcentajes_kilos,
         # Desglose detallado de OTROS
         'porcentajes_operaciones_otros': operaciones_otros,
-        'porcentajes_usd_otros': porcentajes_otros_detalle
+        'porcentajes_kilos_otros': porcentajes_otros_detalle_kilos
     }
     
     # Guardar en caché por 5 minutos (300 segundos)

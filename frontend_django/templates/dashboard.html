@@ -311,7 +311,7 @@
                     <div class="card-header">
                         <h6 class="mb-0">
                             <i class="bi bi-pie-chart me-2"></i>
-                            % Operaciones: Sucursales + OTROS (Últimos {{ periodo_actual }} días)
+                            Solicitudes por Sucursales + OTROS (Últimos {{ periodo_actual }} días)
                         </h6>
                     </div>
                     <div class="card-body">
@@ -325,53 +325,57 @@
                     <div class="card-header">
                         <h6 class="mb-0">
                             <i class="bi bi-pie-chart-fill me-2"></i>
-                            % Valor USD: Sucursales + OTROS (Últimos {{ periodo_actual }} días)
+                            Kilos Volumétricos por Sucursales + OTROS (Últimos {{ periodo_actual }} días)
                         </h6>
                     </div>
                     <div class="card-body">
-                        <canvas id="chartUsdCliente" height="80"></canvas>
+                        <canvas id="chartKilosCliente" height="80"></canvas>
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- Tabla de Códigos en Despacho -->
+        <!-- Tabla de Solicitudes en Despacho -->
         <div class="row">
             <div class="col-12">
                 <div class="card">
                     <div class="card-header">
                         <h6 class="mb-0">
                             <i class="bi bi-boxes me-2"></i>
-                            Códigos en Despacho (Estado: Listo para Despacho)
+                            Solicitudes en Despacho (Estado: Listo para Despacho)
                         </h6>
                     </div>
                     <div class="card-body p-0">
-                        {% if indicadores.codigos_en_despacho %}
+                        {% if indicadores.solicitudes_en_despacho %}
                         <div class="table-responsive">
                             <table class="table table-hover mb-0">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Transporte</th>
-                                        <th>Cantidad de Códigos</th>
+                                        <th>Cantidad de Solicitudes</th>
                                         <th>Valor USD</th>
-                                        <th>Días Promedio</th>
-                                        <th>Días Mínimo</th>
-                                        <th>Días Máximo</th>
+                                        <th>Horas Laborales</th>
+                                        <th>Días Laborales</th>
+                                        <th>Días Calendario</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for item in indicadores.codigos_en_despacho %}
+                                    {% for item in indicadores.solicitudes_en_despacho %}
                                     <tr>
                                         <td><strong>{{ item.transporte }}</strong></td>
-                                        <td><span class="badge bg-primary">{{ item.cantidad_codigos }}</span></td>
+                                        <td><span class="badge bg-primary">{{ item.cantidad_solicitudes }}</span></td>
                                         <td>${{ item.valor_usd|floatformat:2 }}</td>
                                         <td>
-                                            <span class="badge {% if item.dias_promedio > 5 %}bg-danger{% elif item.dias_promedio > 3 %}bg-warning{% else %}bg-success{% endif %}">
-                                                {{ item.dias_promedio|floatformat:1 }} días
+                                            <span class="badge {% if item.dias_laborales >= 3 %}bg-danger{% elif item.dias_laborales >= 2 %}bg-warning{% else %}bg-success{% endif %}">
+                                                {{ item.horas_laborales|floatformat:1 }}h
                                             </span>
                                         </td>
-                                        <td>{{ item.dias_min|floatformat:1 }} días</td>
-                                        <td>{{ item.dias_max|floatformat:1 }} días</td>
+                                        <td>
+                                            <span class="badge {% if item.dias_laborales >= 3 %}bg-danger{% elif item.dias_laborales >= 2 %}bg-warning{% else %}bg-success{% endif %}">
+                                                {{ item.dias_laborales|floatformat:1 }} días
+                                            </span>
+                                        </td>
+                                        <td>{{ item.dias_calendario|floatformat:1 }} días</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -380,7 +384,7 @@
                         {% else %}
                         <div class="p-4 text-center text-muted">
                             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                            No hay códigos en despacho para el período y transporte seleccionados.
+                            No hay solicitudes en despacho para el período y transporte seleccionados.
                         </div>
                         {% endif %}
                     </div>
@@ -388,19 +392,19 @@
             </div>
         </div>
         
-        <!-- Gráfico de Códigos en Despacho por Transporte -->
-        {% if indicadores.codigos_en_despacho %}
+        <!-- Gráfico de Solicitudes en Despacho por Transporte -->
+        {% if indicadores.solicitudes_en_despacho %}
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card">
                     <div class="card-header">
                         <h6 class="mb-0">
                             <i class="bi bi-pie-chart me-2"></i>
-                            Distribución de Códigos en Despacho por Transporte
+                            Distribución de Solicitudes en Despacho por Transporte
                         </h6>
                     </div>
                     <div class="card-body">
-                        <canvas id="chartCodigosDespacho" height="80"></canvas>
+                        <canvas id="chartSolicitudesDespacho" height="80"></canvas>
                     </div>
                 </div>
             </div>
@@ -740,19 +744,23 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Gráfico de Códigos en Despacho
-        const ctxCodigos = document.getElementById('chartCodigosDespacho');
-        if (ctxCodigos) {
-            const transportes = [{% for item in indicadores.codigos_en_despacho %}'{{ item.transporte|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
-            const cantidades = [{% for item in indicadores.codigos_en_despacho %}{{ item.cantidad_codigos }}{% if not forloop.last %},{% endif %}{% endfor %}];
+        // Gráfico de Solicitudes en Despacho
+        const ctxSolicitudes = document.getElementById('chartSolicitudesDespacho');
+        if (ctxSolicitudes) {
+            const transportes = [{% for item in indicadores.solicitudes_en_despacho %}'{{ item.transporte|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+            const cantidades = [{% for item in indicadores.solicitudes_en_despacho %}{{ item.cantidad_solicitudes }}{% if not forloop.last %},{% endif %}{% endfor %}];
             
             if (transportes.length > 0 && cantidades.length > 0) {
-                new Chart(ctxCodigos, {
+                // Calcular el máximo valor para ajustar el eje Y
+                const maxValor = Math.max(...cantidades);
+                const limiteY = Math.ceil(maxValor * 1.15); // 15% más espacio arriba
+                
+                new Chart(ctxSolicitudes, {
                 type: 'bar',
                 data: {
                     labels: transportes,
                     datasets: [{
-                        label: 'Cantidad de Códigos',
+                        label: 'Cantidad de Solicitudes',
                         data: cantidades,
                         backgroundColor: 'rgba(0, 123, 255, 0.7)',
                         borderColor: 'rgba(0, 123, 255, 1)',
@@ -765,18 +773,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     responsive: true,
                     maintainAspectRatio: true,
                     animation: animacionConfig,
+                    layout: {
+                        padding: {
+                            top: 25  // Espacio extra arriba para los números
+                        }
+                    },
                     scales: {
                         y: {
                             beginAtZero: true,
+                            max: limiteY,  // Límite ajustado para dejar espacio
                             title: {
                                 display: true,
-                                text: 'Cantidad de Códigos'
+                                text: 'Cantidad de Solicitudes'
+                            },
+                            ticks: {
+                                stepSize: 1  // Incrementos de 1 en 1
                             }
                         }
                     },
                     plugins: {
                         legend: {
                             display: false
+                        },
+                        valoresBarras: {
+                            enabled: true
                         }
                     }
                 }
@@ -784,7 +804,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Gráfico de % Operaciones por Cliente
+        // Gráfico de Solicitudes por Cliente
         const ctxOperacionesCliente = document.getElementById('chartOperacionesCliente');
         if (ctxOperacionesCliente) {
             const clientesOperaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
@@ -814,7 +834,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     data: {
                         labels: clientesFinal,
                         datasets: [{
-                            label: '% Operaciones',
+                            label: 'Solicitudes',
                             data: porcentajesFinal,
                             backgroundColor: colors.slice(0, clientesFinal.length),
                             borderColor: '#fff',
@@ -868,9 +888,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         if (index >= 0 && index < porcentajesFinal.length) {
                                             label += porcentajesFinal[index].toFixed(2) + '%';
                                             if (operacionesFinal && index < operacionesFinal.length) {
-                                                label += ' (' + operacionesFinal[index] + ' operaciones)';
+                                                label += ' (' + operacionesFinal[index] + ' solicitudes)';
                                             } else {
-                                                label += ' (0 operaciones)';
+                                                label += ' (0 solicitudes)';
                                             }
                                         }
                                         return label;
@@ -883,39 +903,39 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Gráfico de % Valor USD por Cliente
-        const ctxUsdCliente = document.getElementById('chartUsdCliente');
-        if (ctxUsdCliente) {
-            const clientesUsd = [{% for item in indicadores.porcentajes_usd_cliente %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
-            const porcentajesUsd = [{% for item in indicadores.porcentajes_usd_cliente %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
-            const valoresUsd = [{% for item in indicadores.porcentajes_usd_cliente %}{{ item.valor_usd|default:0|floatformat:2 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+        // Gráfico de Kilos Volumétricos por Cliente
+        const ctxKilosCliente = document.getElementById('chartKilosCliente');
+        if (ctxKilosCliente) {
+            const clientesKilos = [{% for item in indicadores.porcentajes_kilos_cliente %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+            const porcentajesKilos = [{% for item in indicadores.porcentajes_kilos_cliente %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            const valoresKilos = [{% for item in indicadores.porcentajes_kilos_cliente %}{{ item.kilos_volumetricos|default:0|floatformat:2 }}{% if not forloop.last %},{% endif %}{% endfor %}];
             
             // Debug: Verificar cuántas categorías hay
-            console.log('📊 Gráfico USD - Categorías:', clientesUsd.length, clientesUsd);
-            console.log('📊 Gráfico USD - Porcentajes:', porcentajesUsd);
+            console.log('📊 Gráfico Kilos - Categorías:', clientesKilos.length, clientesKilos);
+            console.log('📊 Gráfico Kilos - Porcentajes:', porcentajesKilos);
             
             // Validar que todos los arrays tengan la misma longitud
-            const minLengthUsd = Math.min(clientesUsd.length, porcentajesUsd.length, valoresUsd.length);
-            if (minLengthUsd > 0) {
+            const minLengthKilos = Math.min(clientesKilos.length, porcentajesKilos.length, valoresKilos.length);
+            if (minLengthKilos > 0) {
                 // Asegurar que todos los arrays tengan la misma longitud
-                const clientesUsdFinal = clientesUsd.slice(0, minLengthUsd);
-                const porcentajesUsdFinal = porcentajesUsd.slice(0, minLengthUsd);
-                const valoresUsdFinal = valoresUsd.slice(0, minLengthUsd).map(v => parseFloat(v) || 0);
+                const clientesKilosFinal = clientesKilos.slice(0, minLengthKilos);
+                const porcentajesKilosFinal = porcentajesKilos.slice(0, minLengthKilos);
+                const valoresKilosFinal = valoresKilos.slice(0, minLengthKilos).map(v => parseFloat(v) || 0);
                 
                 // Asignar colores según el nombre de la categoría (mapeo fijo)
-                const colorsUsd = clientesUsdFinal.map(cliente => getColorForCategory(cliente));
+                const colorsKilos = clientesKilosFinal.map(cliente => getColorForCategory(cliente));
                 
-                console.log('📊 Gráfico USD - Clientes:', clientesUsdFinal);
-                console.log('🎨 Colores asignados:', colorsUsd);
+                console.log('📊 Gráfico Kilos - Clientes:', clientesKilosFinal);
+                console.log('🎨 Colores asignados:', colorsKilos);
                 
-                new Chart(ctxUsdCliente, {
+                new Chart(ctxKilosCliente, {
                     type: 'pie',
                     data: {
-                        labels: clientesUsdFinal,
+                        labels: clientesKilosFinal,
                         datasets: [{
-                            label: '% Valor USD',
-                            data: porcentajesUsdFinal,
-                            backgroundColor: colorsUsd.slice(0, clientesUsdFinal.length),
+                            label: 'Kilos Volumétricos',
+                            data: porcentajesKilosFinal,
+                            backgroundColor: colorsKilos.slice(0, clientesKilosFinal.length),
                             borderColor: '#fff',
                             borderWidth: 2,
                             hoverOffset: 15,
@@ -947,8 +967,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                         
                                         // Agregar porcentajes a cada etiqueta
                                         labelsOriginal.forEach((label, i) => {
-                                            if (i < porcentajesUsdFinal.length) {
-                                                label.text = clientesUsdFinal[i] + ' (' + porcentajesUsdFinal[i].toFixed(1) + '%)';
+                                            if (i < porcentajesKilosFinal.length) {
+                                                label.text = clientesKilosFinal[i] + ' (' + porcentajesKilosFinal[i].toFixed(1) + '%)';
                                             }
                                         });
                                         
@@ -964,12 +984,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                             label += ': ';
                                         }
                                         const index = context.dataIndex;
-                                        if (index >= 0 && index < porcentajesUsdFinal.length) {
-                                            label += porcentajesUsdFinal[index].toFixed(2) + '%';
-                                            if (valoresUsdFinal && index < valoresUsdFinal.length && valoresUsdFinal[index] > 0) {
-                                                label += ' ($' + valoresUsdFinal[index].toLocaleString('es-CL', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD)';
+                                        if (index >= 0 && index < porcentajesKilosFinal.length) {
+                                            label += porcentajesKilosFinal[index].toFixed(2) + '%';
+                                            if (valoresKilosFinal && index < valoresKilosFinal.length && valoresKilosFinal[index] > 0) {
+                                                label += ' (' + valoresKilosFinal[index].toFixed(2) + ' kg)';
                                             } else {
-                                                label += ' (Sin valor USD)';
+                                                label += ' (Sin medidas)';
                                             }
                                         }
                                         return label;
