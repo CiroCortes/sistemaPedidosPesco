@@ -294,11 +294,69 @@
                     <div class="card-header">
                         <h6 class="mb-0">
                             <i class="bi bi-graph-up me-2"></i>
-                            Tendencia Lead Time Preparación - Evolución Diaria (Últimos {{ periodo_actual }} días)
+                            Tendencia Lead Time Preparación - Evolución Semanal (Últimos {{ periodo_actual }} días)
                         </h6>
                     </div>
                     <div class="card-body">
                         <canvas id="chartLeadTimes" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabla de Lead Time por Bodega -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-clock-history me-2"></i>
+                            Lead Time Promedio de Preparación por Bodega (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if indicadores.lead_time_bodegas %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Bodega</th>
+                                        <th class="text-center">Lead Time Promedio</th>
+                                        <th>En Horas</th>
+                                        <th>En Días</th>
+                                        <th class="text-center">Operaciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in indicadores.lead_time_bodegas %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ item.bodega_codigo }}</strong><br>
+                                            <small class="text-muted">{{ item.bodega_nombre }}</small>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if item.cantidad_operaciones > 0 %}
+                                                <span class="badge {% if item.lead_time_dias >= 2 %}bg-danger{% elif item.lead_time_dias >= 1 %}bg-warning{% else %}bg-success{% endif %} fs-6">
+                                                    {{ item.lead_time_horas|floatformat:1 }}h
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary fs-6">0h</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{% if item.cantidad_operaciones > 0 %}{{ item.lead_time_horas|floatformat:1 }} horas{% else %}<span class="text-muted">0.0 horas</span>{% endif %}</td>
+                                        <td>{% if item.cantidad_operaciones > 0 %}{{ item.lead_time_dias|floatformat:2 }} días{% else %}<span class="text-muted">0.00 días</span>{% endif %}</td>
+                                        <td class="text-center"><span class="badge {% if item.cantidad_operaciones > 0 %}bg-info{% else %}bg-secondary{% endif %}">{{ item.cantidad_operaciones }}</span></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="p-4 text-center text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay datos de lead time para el período seleccionado.
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -391,30 +449,11 @@
                 </div>
             </div>
         </div>
-        
-        <!-- Gráfico de Solicitudes en Despacho por Transporte -->
-        {% if indicadores.solicitudes_en_despacho %}
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">
-                            <i class="bi bi-pie-chart me-2"></i>
-                            Distribución de Solicitudes en Despacho por Transporte
-                        </h6>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="chartSolicitudesDespacho" height="80"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 
 {% if user.es_admin and indicadores %}
-<script type="application/json" id="tendenciaDiariaData">{% if indicadores.lead_time_preparacion.tendencia_diaria_json %}{{ indicadores.lead_time_preparacion.tendencia_diaria_json|safe }}{% else %}[]{% endif %}</script>
+<script type="application/json" id="tendenciaSemanalData">{% if indicadores.lead_time_preparacion.tendencia_semanal_json %}{{ indicadores.lead_time_preparacion.tendencia_semanal_json|safe }}{% else %}[]{% endif %}</script>
 {% endif %}
 
 <script>
@@ -558,26 +597,27 @@ document.addEventListener('DOMContentLoaded', function() {
         // Datos para el gráfico de Tendencia Lead Time Preparación
         const ctxLeadTimes = document.getElementById('chartLeadTimes');
         if (ctxLeadTimes) {
-            // Preparar datos diarios desde JSON
-            const tendenciaDiariaJson = document.getElementById('tendenciaDiariaData');
-            let tendenciaDiaria = [];
+            // Preparar datos semanales desde JSON
+            const tendenciaSemanalJson = document.getElementById('tendenciaSemanalData');
+            let tendenciaSemanal = [];
             
-            if (tendenciaDiariaJson && tendenciaDiariaJson.textContent) {
+            if (tendenciaSemanalJson && tendenciaSemanalJson.textContent) {
                 try {
-                    tendenciaDiaria = JSON.parse(tendenciaDiariaJson.textContent);
+                    tendenciaSemanal = JSON.parse(tendenciaSemanalJson.textContent);
                 } catch (e) {
-                    console.error('Error al parsear datos de tendencia diaria:', e);
-                    tendenciaDiaria = [];
+                    console.error('Error al parsear datos de tendencia semanal:', e);
+                    tendenciaSemanal = [];
                 }
             }
             
             // Verificar que hay datos antes de crear el gráfico
-            if (tendenciaDiaria && tendenciaDiaria.length > 0) {
-                const labels = tendenciaDiaria.map(item => item.fecha_display);
+            if (tendenciaSemanal && tendenciaSemanal.length > 0) {
+                // Mostrar solo "S1", "S2", etc. (sin fechas)
+                const labels = tendenciaSemanal.map(item => `S${item.semana_numero}`);
                 // Mantener los valores en horas (sin convertir a días)
-                const promedios = tendenciaDiaria.map(item => parseFloat(item.promedio.toFixed(2)));
-                const minimos = tendenciaDiaria.map(item => parseFloat(item.minimo.toFixed(2)));
-                const maximos = tendenciaDiaria.map(item => parseFloat(item.maximo.toFixed(2)));
+                const promedios = tendenciaSemanal.map(item => parseFloat(item.promedio.toFixed(2)));
+                const minimos = tendenciaSemanal.map(item => parseFloat(item.minimo.toFixed(2)));
+                const maximos = tendenciaSemanal.map(item => parseFloat(item.maximo.toFixed(2)));
                 
                 new Chart(ctxLeadTimes, {
                 type: 'line',
@@ -676,11 +716,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         x: {
                             title: {
                                 display: true,
-                                text: 'Fecha'
+                                text: 'Semana'
                             },
                             ticks: {
-                                maxRotation: 45,
-                                minRotation: 45
+                                maxRotation: 0,
+                                minRotation: 0
                             }
                         }
                     },
@@ -695,6 +735,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         },
                         tooltip: {
                             callbacks: {
+                                title: function(context) {
+                                    // Mostrar semana y fechas en el tooltip
+                                    const index = context[0].dataIndex;
+                                    const item = tendenciaSemanal[index];
+                                    return `Semana ${item.semana_numero}: ${item.fecha_display.split(': ')[1]}`;
+                                },
                                 label: function(context) {
                                     let label = context.dataset.label || '';
                                     if (label) {
@@ -709,7 +755,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             });
             } else {
-                // No hay datos diarios disponibles
+                // No hay datos semanales disponibles
                 new Chart(ctxLeadTimes, {
                     type: 'line',
                     data: {
@@ -740,66 +786,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         }
                     }
-                });
-            }
-        }
-        
-        // Gráfico de Solicitudes en Despacho
-        const ctxSolicitudes = document.getElementById('chartSolicitudesDespacho');
-        if (ctxSolicitudes) {
-            const transportes = [{% for item in indicadores.solicitudes_en_despacho %}'{{ item.transporte|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
-            const cantidades = [{% for item in indicadores.solicitudes_en_despacho %}{{ item.cantidad_solicitudes }}{% if not forloop.last %},{% endif %}{% endfor %}];
-            
-            if (transportes.length > 0 && cantidades.length > 0) {
-                // Calcular el máximo valor para ajustar el eje Y
-                const maxValor = Math.max(...cantidades);
-                const limiteY = Math.ceil(maxValor * 1.15); // 15% más espacio arriba
-                
-                new Chart(ctxSolicitudes, {
-                type: 'bar',
-                data: {
-                    labels: transportes,
-                    datasets: [{
-                        label: 'Cantidad de Solicitudes',
-                        data: cantidades,
-                        backgroundColor: 'rgba(0, 123, 255, 0.7)',
-                        borderColor: 'rgba(0, 123, 255, 1)',
-                        borderWidth: 1,
-                        borderRadius: 8,
-                        borderSkipped: false
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    animation: animacionConfig,
-                    layout: {
-                        padding: {
-                            top: 25  // Espacio extra arriba para los números
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: limiteY,  // Límite ajustado para dejar espacio
-                            title: {
-                                display: true,
-                                text: 'Cantidad de Solicitudes'
-                            },
-                            ticks: {
-                                stepSize: 1  // Incrementos de 1 en 1
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        valoresBarras: {
-                            enabled: true
-                        }
-                    }
-                }
                 });
             }
         }
@@ -846,6 +832,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
+                        aspectRatio: 1.5,
                         animation: {
                             animateRotate: true,
                             animateScale: true,
@@ -866,10 +853,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                         const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
                                         const labelsOriginal = original.call(this, chart);
                                         
-                                        // Agregar porcentajes a cada etiqueta
+                                        // Mantener solo el nombre de la categoría (sin porcentajes)
                                         labelsOriginal.forEach((label, i) => {
-                                            if (i < porcentajesFinal.length) {
-                                                label.text = clientesFinal[i] + ' (' + porcentajesFinal[i].toFixed(1) + '%)';
+                                            if (i < clientesFinal.length) {
+                                                label.text = clientesFinal[i];
                                             }
                                         });
                                         
@@ -945,6 +932,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
+                        aspectRatio: 1.5,
                         animation: {
                             animateRotate: true,
                             animateScale: true,
@@ -965,10 +953,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                         const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
                                         const labelsOriginal = original.call(this, chart);
                                         
-                                        // Agregar porcentajes a cada etiqueta
+                                        // Mantener solo el nombre de la categoría (sin porcentajes)
                                         labelsOriginal.forEach((label, i) => {
-                                            if (i < porcentajesKilosFinal.length) {
-                                                label.text = clientesKilosFinal[i] + ' (' + porcentajesKilosFinal[i].toFixed(1) + '%)';
+                                            if (i < clientesKilosFinal.length) {
+                                                label.text = clientesKilosFinal[i];
                                             }
                                         });
                                         

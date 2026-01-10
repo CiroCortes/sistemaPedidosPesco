@@ -306,8 +306,8 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     ).select_related('solicitud')
     
     lead_times_prep = []
-    # Diccionario para agrupar lead times por día (fecha de preparación)
-    lead_times_por_dia = {}
+    # Diccionario para agrupar lead times por semana (año + número de semana ISO)
+    lead_times_por_semana = {}
     
     for detalle in detalles_preparados:
         if detalle.fecha_preparacion and detalle.solicitud.created_at:
@@ -315,32 +315,56 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             horas = delta.total_seconds() / 3600
             lead_times_prep.append(horas)
             
-            # Agrupar por día (usar fecha de preparación como referencia)
-            fecha_dia = detalle.fecha_preparacion.date()
-            if fecha_dia not in lead_times_por_dia:
-                lead_times_por_dia[fecha_dia] = []
-            lead_times_por_dia[fecha_dia].append(horas)
+            # Agrupar por SEMANA ISO (usar fecha de preparación como referencia)
+            fecha_prep = detalle.fecha_preparacion.date()
+            iso_year, iso_week, iso_day = fecha_prep.isocalendar()
+            
+            # Clave única por semana: "2026-W02" (año-semana)
+            semana_key = f"{iso_year}-W{iso_week:02d}"
+            
+            if semana_key not in lead_times_por_semana:
+                lead_times_por_semana[semana_key] = {
+                    'valores': [],
+                    'iso_year': iso_year,
+                    'iso_week': iso_week,
+                }
+            lead_times_por_semana[semana_key]['valores'].append(horas)
     
     lt_prep_promedio = sum(lead_times_prep) / len(lead_times_prep) if lead_times_prep else 0
     lt_prep_min = min(lead_times_prep) if lead_times_prep else 0
     lt_prep_max = max(lead_times_prep) if lead_times_prep else 0
     
-    # Calcular datos diarios para el gráfico de tendencia
-    # Ordenar por fecha y calcular promedio, mínimo y máximo por día
-    tendencia_diaria_prep = []
-    for fecha in sorted(lead_times_por_dia.keys()):
-        valores_dia = lead_times_por_dia[fecha]
-        tendencia_diaria_prep.append({
-            'fecha': fecha.strftime('%Y-%m-%d'),
-            'fecha_display': fecha.strftime('%d/%m'),
-            'promedio': float(sum(valores_dia) / len(valores_dia)),
-            'minimo': float(min(valores_dia)),
-            'maximo': float(max(valores_dia)),
-            'cantidad': len(valores_dia)
+    # Calcular datos semanales para el gráfico de tendencia
+    # Ordenar por semana y calcular promedio, mínimo y máximo por semana
+    tendencia_semanal_prep = []
+    for semana_key in sorted(lead_times_por_semana.keys()):
+        datos_semana = lead_times_por_semana[semana_key]
+        valores = datos_semana['valores']
+        iso_year = datos_semana['iso_year']
+        iso_week = datos_semana['iso_week']
+        
+        # Calcular primer y último día de la semana para display
+        # ISO: lunes es día 1, domingo es día 7
+        primer_dia = datetime.strptime(f'{iso_year}-W{iso_week:02d}-1', '%G-W%V-%u').date()
+        ultimo_dia = primer_dia + timedelta(days=6)  # domingo
+        
+        # Formato de display: "Sem 2: 06/01-12/01"
+        fecha_display = f"Sem {iso_week}: {primer_dia.strftime('%d/%m')}-{ultimo_dia.strftime('%d/%m')}"
+        
+        tendencia_semanal_prep.append({
+            'semana': semana_key,  # "2026-W02"
+            'semana_numero': iso_week,
+            'fecha_display': fecha_display,  # "Sem 2: 06/01-12/01"
+            'fecha_inicio': primer_dia.strftime('%Y-%m-%d'),
+            'fecha_fin': ultimo_dia.strftime('%Y-%m-%d'),
+            'promedio': float(sum(valores) / len(valores)),
+            'minimo': float(min(valores)),
+            'maximo': float(max(valores)),
+            'cantidad': len(valores)
         })
     
     # Serializar a JSON string para el template (siempre una lista, aunque esté vacía)
-    tendencia_diaria_json = json.dumps(tendencia_diaria_prep, ensure_ascii=False) if tendencia_diaria_prep else '[]'
+    tendencia_semanal_json = json.dumps(tendencia_semanal_prep, ensure_ascii=False) if tendencia_semanal_prep else '[]'
     
     # 1.5. ESTADÍSTICAS POR CLIENTE
     # Agrupar solicitudes por cliente para calcular porcentajes
@@ -394,16 +418,36 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     porcentajes_operaciones = []
     total_otros = sum(item['operaciones'] for item in operaciones_otros)
     
-    # Agregar sucursales
-    for sucursal, operaciones in sorted(operaciones_sucursales.items(), key=lambda x: x[1], reverse=True):
-        porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
-        porcentajes_operaciones.append({
-            'cliente': sucursal,
-            'operaciones': operaciones,
-            'porcentaje': round(porcentaje, 2)
-        })
+    # Orden fijo de sucursales para los gráficos
+    ORDEN_SUCURSALES = [
+        'SUC ANTOFAGASTA',
+        'SUC CALAMA',
+        'SUC PTO MONTT',
+        'SUC LOS ANGELES'
+    ]
     
-    # Agregar OTROS
+    # Agregar sucursales en el orden especificado
+    for sucursal in ORDEN_SUCURSALES:
+        if sucursal in operaciones_sucursales:
+            operaciones = operaciones_sucursales[sucursal]
+            porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
+            porcentajes_operaciones.append({
+                'cliente': sucursal,
+                'operaciones': operaciones,
+                'porcentaje': round(porcentaje, 2)
+            })
+    
+    # Agregar cualquier otra sucursal no contemplada en el orden (por si acaso)
+    for sucursal, operaciones in sorted(operaciones_sucursales.items(), key=lambda x: x[1], reverse=True):
+        if sucursal not in ORDEN_SUCURSALES:
+            porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
+            porcentajes_operaciones.append({
+                'cliente': sucursal,
+                'operaciones': operaciones,
+                'porcentaje': round(porcentaje, 2)
+            })
+    
+    # Agregar OTROS al final
     if total_otros > 0:
         porcentaje_otros = (total_otros / total_operaciones * 100) if total_operaciones > 0 else 0
         porcentajes_operaciones.append({
@@ -464,9 +508,20 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     total_kilos = sum(kilos_por_cliente.values()) + sum(kilos_otros_detalle.values())
     porcentajes_kilos = []
     
-    # Agregar sucursales con kilos
+    # Agregar sucursales con kilos en el orden especificado
+    for sucursal in ORDEN_SUCURSALES:
+        if sucursal in kilos_por_cliente and kilos_por_cliente[sucursal] > 0:
+            kilos = kilos_por_cliente[sucursal]
+            porcentaje = (float(kilos) / float(total_kilos) * 100) if total_kilos > 0 else 0
+            porcentajes_kilos.append({
+                'cliente': sucursal,
+                'kilos_volumetricos': float(kilos),
+                'porcentaje': round(porcentaje, 2)
+            })
+    
+    # Agregar cualquier otra sucursal no contemplada en el orden (por si acaso)
     for sucursal, kilos in sorted(kilos_por_cliente.items(), key=lambda x: x[1], reverse=True):
-        if kilos > 0:
+        if sucursal not in ORDEN_SUCURSALES and kilos > 0:
             porcentaje = (float(kilos) / float(total_kilos) * 100) if total_kilos > 0 else 0
             porcentajes_kilos.append({
                 'cliente': sucursal,
@@ -484,7 +539,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'porcentaje': round(porcentaje_otros, 2)
         })
     
-    # Agregar clientes sin medidas (para información)
+    # Agregar clientes sin medidas (para información) al final
     todos_sin_medidas = clientes_sin_medidas | clientes_otros_sin_medidas
     if todos_sin_medidas:
         porcentajes_kilos.append({
@@ -594,6 +649,84 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             Q(solicitud__transporte=transporte_filtro)
         )
     
+    # Bodegas de uso cotidiano para el dashboard
+    BODEGAS_DASHBOARD = ['013-03', '013-01', '013-PP', '013-PS', '013-09']
+    
+    # Obtener nombres de bodegas desde el modelo
+    from .models import Bodega
+    bodegas_info = {
+        b.codigo: b.nombre 
+        for b in Bodega.objects.filter(activa=True)
+    }
+    
+    # Calcular LEAD TIME DE PREPARACIÓN por bodega
+    # INICIALIZAR TODAS las bodegas con 0 operaciones
+    lead_times_por_bodega = {}
+    for bodega_codigo in BODEGAS_DASHBOARD:
+        lead_times_por_bodega[bodega_codigo] = {
+            'codigo': bodega_codigo,
+            'nombre': bodegas_info.get(bodega_codigo, 'Nombre no disponible'),
+            'lead_times_horas': [],
+            'cantidad_operaciones': 0
+        }
+    
+    # Obtener todos los detalles preparados del período con sus bodegas
+    detalles_preparados_bodegas = SolicitudDetalle.objects.filter(
+        solicitud__in=solicitudes_base,
+        fecha_preparacion__isnull=False,
+        bodega__in=BODEGAS_DASHBOARD
+    ).select_related('solicitud')
+    
+    # Agregar lead times calculados
+    for detalle in detalles_preparados_bodegas:
+        bodega_codigo = detalle.bodega.strip() if detalle.bodega else ''
+        
+        # Filtrar: solo bodegas de uso cotidiano
+        if not bodega_codigo or bodega_codigo not in BODEGAS_DASHBOARD:
+            continue
+        
+        # Calcular lead time: desde created_at de solicitud hasta fecha_preparacion del detalle
+        if detalle.fecha_preparacion and detalle.solicitud.created_at:
+            delta = detalle.fecha_preparacion - detalle.solicitud.created_at
+            horas = delta.total_seconds() / 3600
+            lead_times_por_bodega[bodega_codigo]['lead_times_horas'].append(horas)
+            lead_times_por_bodega[bodega_codigo]['cantidad_operaciones'] += 1
+    
+    # Formatear datos de lead time por bodega - INCLUIR TODAS
+    lead_time_bodegas = []
+    for bodega_codigo in BODEGAS_DASHBOARD:  # Iterar en el orden definido
+        datos = lead_times_por_bodega[bodega_codigo]
+        
+        if datos['lead_times_horas']:
+            # Calcular promedio si hay datos
+            horas_prom = sum(datos['lead_times_horas']) / len(datos['lead_times_horas'])
+            dias_prom = horas_prom / 24  # Convertir a días
+            horas_min = min(datos['lead_times_horas'])
+            horas_max = max(datos['lead_times_horas'])
+        else:
+            # Sin datos: 0 operaciones
+            horas_prom = 0
+            dias_prom = 0
+            horas_min = 0
+            horas_max = 0
+        
+        lead_time_bodegas.append({
+            'bodega_codigo': bodega_codigo,
+            'bodega_nombre': datos['nombre'],
+            'lead_time_horas': horas_prom,
+            'lead_time_dias': dias_prom,
+            'cantidad_operaciones': datos['cantidad_operaciones'],
+            'horas_min': horas_min,
+            'horas_max': horas_max,
+        })
+    
+    # NO ordenar - mantener el orden definido en BODEGAS_DASHBOARD
+    # Esto asegura que los datos coincidan con los labels en el frontend
+    
+    # ============================================================================
+    # SOLICITUDES EN DESPACHO POR TRANSPORTE (Horas Laborales + Días)
+    # ============================================================================
+    
     # Agrupar por transporte y calcular métricas
     solicitudes_por_transporte = {}
     
@@ -602,21 +735,19 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     detalles_por_bulto = {}
     
     for bulto in bultos_en_despacho:
-        # Usar los detalles precargados
-        detalles = getattr(bulto, 'detalles_precargados', [])
-        if not detalles:
-            # Fallback: usar el método relacionado si prefetch no funcionó
+        if hasattr(bulto, 'detalles_precargados'):
+            detalles = bulto.detalles_precargados
+        else:
             detalles = list(bulto.detalles.all())
         
         detalles_por_bulto[bulto.id] = (bulto, detalles)
-        
         for detalle in detalles:
             todos_codigos.add(detalle.codigo)
     
-    # OPTIMIZADO: Batch query para obtener todos los precios de una vez
+    # Batch query para precios
     precios_cache = {}
     if todos_codigos:
-        stocks = Stock.objects.filter(codigo__in=todos_codigos).values('codigo', 'precio')
+        stocks = Stock.objects.filter(codigo__in=list(todos_codigos)).values('codigo', 'precio')
         for stock in stocks:
             # Si hay múltiples stocks para el mismo código, tomar el primero con precio válido
             if stock['codigo'] not in precios_cache and stock.get('precio'):
@@ -699,8 +830,8 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'max_horas': lt_prep_max,
             'max_dias': lt_prep_max / 24,
             'total_registros': len(lead_times_prep),
-            'tendencia_diaria': tendencia_diaria_prep,
-            'tendencia_diaria_json': tendencia_diaria_json
+            'tendencia_semanal': tendencia_semanal_prep,
+            'tendencia_semanal_json': tendencia_semanal_json
         },
         'lead_time_embalaje': {
             'promedio_horas': lt_emb_promedio,
@@ -720,6 +851,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'max_dias': lt_total_max / 24,
             'total_registros': len(lead_times_total)
         },
+        'lead_time_bodegas': lead_time_bodegas,
         'solicitudes_en_despacho': solicitudes_despacho,
         'transportes_disponibles': transportes_disponibles,
         'periodo_dias': periodo_dias,
