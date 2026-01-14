@@ -195,6 +195,10 @@ def crear_bulto(request):
             bulto.estado = 'embalado'
             # Asignar la solicitud ANTES de guardar (campo obligatorio NOT NULL)
             bulto.solicitud = solicitud_unica
+            # Establecer fecha_embalaje automáticamente al crear el bulto
+            # fecha_embalaje es la fecha real del proceso (fecha_creacion no afecta el KPI)
+            if not bulto.fecha_embalaje:
+                bulto.fecha_embalaje = timezone.now()
             bulto.save()
 
             # Asignar bulto a todos los detalles

@@ -1,4 +1,7 @@
 from django import forms
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+import pytz
 
 from configuracion.models import EstadoWorkflow, TransporteConfig
 from .models import Bulto
@@ -73,4 +76,19 @@ class BultoEstadoForm(forms.ModelForm):
         # Hacer fecha_embalaje opcional
         self.fields['fecha_embalaje'].required = False
         self.fields['numero_guia_transportista'].required = False
+    
+    def clean_fecha_embalaje(self):
+        """
+        Convierte fecha naive del navegador a aware con zona horaria de Chile.
+        fecha_embalaje es la fecha real del proceso (fecha_creacion del bulto no afecta el KPI).
+        """
+        fecha_embalaje = self.cleaned_data.get('fecha_embalaje')
+        if fecha_embalaje:
+            # Convertir a zona horaria de Chile si es naive
+            if timezone.is_naive(fecha_embalaje):
+                chile_tz = pytz.timezone('America/Santiago')
+                fecha_embalaje = timezone.make_aware(fecha_embalaje, chile_tz)
+            
+            return fecha_embalaje
+        return None
 

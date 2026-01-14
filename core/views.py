@@ -570,13 +570,15 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         })
     
     # 2. LEAD TIME DE EMBALAJE
-    # Desde que solicitud cambió a 'en_despacho' hasta fecha_embalaje del bulto
-    # Usamos fecha_creacion del bulto como proxy de cuando cambió a en_despacho
+    # Mide: fecha y hora de preparación (más reciente) vs fecha y hora de embalaje
+    # La fecha de preparación más reciente (MAX) de todos los detalles es cuando termina la preparación
+    # fecha_embalaje es la fecha real del proceso de embalaje
     bultos_embalados = Bulto.objects.filter(
         solicitud__in=solicitudes_base,
-        fecha_embalaje__isnull=False,
-        estado='listo_despacho'
-    ).select_related('solicitud')
+        fecha_embalaje__isnull=False
+    ).exclude(
+        estado__in=['cancelado']  # Excluir solo cancelados
+    ).select_related('solicitud').prefetch_related('solicitud__detalles')
     
     if transporte_filtro:
         bultos_embalados = bultos_embalados.filter(
@@ -587,9 +589,33 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     
     lead_times_emb = []
     for bulto in bultos_embalados:
-        if bulto.fecha_embalaje and bulto.fecha_creacion:
-            delta = bulto.fecha_embalaje - bulto.fecha_creacion
-            lead_times_emb.append(delta.total_seconds() / 3600)  # En horas
+        if bulto.fecha_embalaje:
+            # Obtener la fecha de preparación más reciente de todos los detalles de la solicitud
+            # Esta es la fecha cuando la solicitud pasa a "en_despacho" (termina la preparación)
+            detalles_con_preparacion = bulto.solicitud.detalles.filter(
+                fecha_preparacion__isnull=False
+            )
+            
+            fecha_fin_preparacion = None
+            if detalles_con_preparacion.exists():
+                # Obtener el MAX(fecha_preparacion) de todos los detalles
+                fecha_fin_preparacion = detalles_con_preparacion.aggregate(
+                    max_fecha=Max('fecha_preparacion')
+                )['max_fecha']
+            
+            # Si no hay fecha de preparación (ej: bodega 013, directo a despacho),
+            # usar created_at de la solicitud como fallback
+            if not fecha_fin_preparacion:
+                fecha_fin_preparacion = bulto.solicitud.created_at
+            
+            if fecha_fin_preparacion and bulto.fecha_embalaje:
+                # Lead Time = fecha_embalaje - fecha_fin_preparacion
+                # Mide el tiempo desde que terminó la preparación hasta que se embaló
+                delta = bulto.fecha_embalaje - fecha_fin_preparacion
+                horas = delta.total_seconds() / 3600
+                # Solo agregar si el lead time es positivo (o muy pequeño, como 1 minuto = 0.016 horas)
+                if horas >= 0:
+                    lead_times_emb.append(horas)
     
     lt_emb_promedio = sum(lead_times_emb) / len(lead_times_emb) if lead_times_emb else 0
     lt_emb_min = min(lead_times_emb) if lead_times_emb else 0

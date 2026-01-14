@@ -1,6 +1,7 @@
 from django import forms
 from django.forms import inlineformset_factory
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 import pytz
 
 from core.models import Bodega
@@ -219,6 +220,7 @@ class SolicitudDetalleEdicionAdminForm(forms.ModelForm):
     def clean_fecha_preparacion(self):
         """
         Convertir fecha naive del navegador a aware con zona horaria de Chile.
+        Validar que fecha_preparacion no sea anterior a solicitud.created_at.
         Usa make_aware() que detecta automáticamente horario de verano/invierno.
         """
         fecha = self.cleaned_data.get('fecha_preparacion')
@@ -228,6 +230,17 @@ class SolicitudDetalleEdicionAdminForm(forms.ModelForm):
                 chile_tz = pytz.timezone('America/Santiago')
                 # make_aware() detecta automáticamente el DST correcto para la fecha
                 fecha = timezone.make_aware(fecha, chile_tz)
+            
+            # Validar que no sea anterior a solicitud.created_at
+            if self.instance and self.instance.solicitud and self.instance.solicitud.created_at:
+                if fecha < self.instance.solicitud.created_at:
+                    raise ValidationError(
+                        f'La fecha de preparación ({fecha.strftime("%d/%m/%Y %H:%M")}) '
+                        f'no puede ser anterior a la fecha de creación de la solicitud '
+                        f'({self.instance.solicitud.created_at.strftime("%d/%m/%Y %H:%M")}). '
+                        f'Esto genera KPIs negativos. Por favor, corrige la fecha.'
+                    )
+            
             return fecha
         return None
 
