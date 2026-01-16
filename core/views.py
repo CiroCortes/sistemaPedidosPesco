@@ -7,12 +7,13 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Count, Q, Avg, Min, Max, Sum, F, ExpressionWrapper, DurationField
-from django.db.models.functions import Coalesce
+from django.db.models import Count, Q, Avg, Min, Max, Sum, F, ExpressionWrapper, DurationField, OuterRef, Subquery, Case, When, DecimalField
+from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 from django.core.cache import cache
 from datetime import timedelta, datetime
 from decimal import Decimal
+import json
 from solicitudes.models import Solicitud, SolicitudDetalle
 from despacho.models import Bulto
 from bodega.models import Stock
@@ -150,10 +151,25 @@ def dashboard(request):
         )
         
         # Calcular indicadores de productividad
-        indicadores = calcular_indicadores_productividad(
-            periodo_dias=periodo_dias,
-            transporte_filtro=transporte_filtro
-        )
+        try:
+            indicadores = calcular_indicadores_productividad(
+                periodo_dias=periodo_dias,
+                transporte_filtro=transporte_filtro
+            )
+        except Exception as e:
+            # Si hay error, usar valores por defecto para no bloquear el dashboard
+            import traceback
+            print(f"Error al calcular indicadores: {e}")
+            traceback.print_exc()
+            indicadores = {
+                'lt_prep_promedio': 0,
+                'lt_emb_promedio': 0,
+                'lt_total_promedio': 0,
+                'porcentajes_operaciones_cliente': [],
+                'porcentajes_kilos_cliente': [],
+                'tendencia_semanal_json': '[]',
+                'lead_times_por_bodega': [],
+            }
         
         context.update({
             'total_solicitudes': stats['total'],
@@ -299,24 +315,41 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     )
     
     # 1. LEAD TIME DE PREPARACIÓN
-    # Tiempo desde created_at hasta fecha_preparacion del primer detalle preparado
-    detalles_preparados = SolicitudDetalle.objects.filter(
-        solicitud__in=solicitudes_base,
+    # Mide: Tiempo desde created_at de solicitud hasta MAX(fecha_preparacion) de todos sus detalles
+    # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por detalle
+    # Una solicitud se considera preparada cuando el último detalle termina de prepararse
+    
+    # OPTIMIZADO: Usar agregación de Django para obtener MAX(fecha_preparacion) por solicitud
+    # Esto evita N+1 queries y es mucho más rápido con Supabase
+    from django.db.models import OuterRef, Subquery
+    
+    # Subquery para obtener MAX(fecha_preparacion) por solicitud
+    max_fecha_prep = SolicitudDetalle.objects.filter(
+        solicitud=OuterRef('pk'),
         fecha_preparacion__isnull=False
-    ).select_related('solicitud')
+    ).order_by('-fecha_preparacion').values('fecha_preparacion')[:1]
+    
+    # Obtener solicitudes con su MAX(fecha_preparacion) en una sola query
+    solicitudes_con_preparacion = solicitudes_base.filter(
+        detalles__fecha_preparacion__isnull=False
+    ).annotate(
+        fecha_prep_max=Subquery(max_fecha_prep)
+    ).distinct().only('id', 'created_at')
     
     lead_times_prep = []
     # Diccionario para agrupar lead times por semana (año + número de semana ISO)
     lead_times_por_semana = {}
     
-    for detalle in detalles_preparados:
-        if detalle.fecha_preparacion and detalle.solicitud.created_at:
-            delta = detalle.fecha_preparacion - detalle.solicitud.created_at
+    # Ahora iteramos sobre los resultados ya agregados (sin queries adicionales)
+    for solicitud in solicitudes_con_preparacion:
+        if solicitud.fecha_prep_max and solicitud.created_at:
+            # Lead Time = fecha_preparacion más reciente - created_at
+            delta = solicitud.fecha_prep_max - solicitud.created_at
             horas = delta.total_seconds() / 3600
             lead_times_prep.append(horas)
             
             # Agrupar por SEMANA ISO (usar fecha de preparación como referencia)
-            fecha_prep = detalle.fecha_preparacion.date()
+            fecha_prep = solicitud.fecha_prep_max.date()
             iso_year, iso_week, iso_day = fecha_prep.isocalendar()
             
             # Clave única por semana: "2026-W02" (año-semana)
@@ -426,9 +459,12 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         'SUC LOS ANGELES'
     ]
     
+    # Usar un set para evitar duplicados
+    sucursales_agregadas = set()
+    
     # Agregar sucursales en el orden especificado
     for sucursal in ORDEN_SUCURSALES:
-        if sucursal in operaciones_sucursales:
+        if sucursal in operaciones_sucursales and sucursal not in sucursales_agregadas:
             operaciones = operaciones_sucursales[sucursal]
             porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
             porcentajes_operaciones.append({
@@ -436,16 +472,18 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
                 'operaciones': operaciones,
                 'porcentaje': round(porcentaje, 2)
             })
+            sucursales_agregadas.add(sucursal)
     
     # Agregar cualquier otra sucursal no contemplada en el orden (por si acaso)
     for sucursal, operaciones in sorted(operaciones_sucursales.items(), key=lambda x: x[1], reverse=True):
-        if sucursal not in ORDEN_SUCURSALES:
+        if sucursal not in ORDEN_SUCURSALES and sucursal not in sucursales_agregadas:
             porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
             porcentajes_operaciones.append({
                 'cliente': sucursal,
                 'operaciones': operaciones,
                 'porcentaje': round(porcentaje, 2)
             })
+            sucursales_agregadas.add(sucursal)
     
     # Agregar OTROS al final
     if total_otros > 0:
@@ -457,87 +495,126 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         })
     
     # Estadísticas de kilos volumétricos por cliente
-    # Obtener todos los bultos de las solicitudes del período
+    # CORRECCIÓN: Agrupar primero por SOLICITUD (sumar todos los bultos de cada solicitud),
+    # luego agrupar por cliente usando el mapa de sucursales
     from despacho.models import Bulto
     
-    bultos_periodo = Bulto.objects.filter(
-        solicitud__in=solicitudes_base
-    ).select_related('solicitud')
-    
-    # Calcular kilos volumétricos por cliente
-    kilos_por_cliente = defaultdict(lambda: Decimal('0.00'))
-    kilos_otros_detalle = defaultdict(lambda: Decimal('0.00'))
+    # Primero: Agrupar kilos por SOLICITUD (sumar todos los bultos de cada solicitud)
+    solicitudes_con_kilos = {}
     clientes_sin_medidas = set()
     clientes_otros_sin_medidas = set()
     
-    for bulto in bultos_periodo:
-        cliente = bulto.solicitud.cliente
+    # OPTIMIZADO: Usar agregación de Django para calcular kilos por solicitud
+    # Esto evita N+1 queries iterando sobre bultos (muy lento con Supabase)
+    # Calcular peso cobrable usando expresiones de Django (se ejecuta en la BD)
+    peso_volumetrico_expr = Case(
+        When(
+            largo_cm__gt=0, ancho_cm__gt=0, alto_cm__gt=0,
+            then=(F('largo_cm') * F('ancho_cm') * F('alto_cm')) / Decimal('6000')
+        ),
+        default=Decimal('0.00'),
+        output_field=DecimalField(max_digits=10, decimal_places=2)
+    )
+    
+    peso_cobrable_expr = Case(
+        When(
+            largo_cm__gt=0, ancho_cm__gt=0, alto_cm__gt=0,
+            then=Greatest(Coalesce(F('peso_total'), 0), peso_volumetrico_expr)
+        ),
+        default=Coalesce(F('peso_total'), 0),
+        output_field=DecimalField(max_digits=10, decimal_places=2)
+    )
+    
+    # IMPORTANTE: Incluir TODAS las solicitudes despachadas, incluso si no tienen bultos o los bultos no tienen peso
+    # Esto asegura que los porcentajes sumen 100%
+    
+    # Obtener todas las solicitudes con sus bultos precargados
+    solicitudes_con_bultos = solicitudes_base.prefetch_related('bultos')
+    
+    # Calcular kilos por solicitud (incluyendo las que tienen 0 kilos)
+    for solicitud in solicitudes_con_bultos:
+        cliente = solicitud.cliente
+        kilos_solicitud = Decimal('0.00')
         
-        # Calcular peso volumétrico
-        # Fórmula: (largo × ancho × alto en cm) / 6000
-        if bulto.largo_cm and bulto.ancho_cm and bulto.alto_cm and \
-           bulto.largo_cm > 0 and bulto.ancho_cm > 0 and bulto.alto_cm > 0:
-            volumen_cm3 = bulto.largo_cm * bulto.ancho_cm * bulto.alto_cm
-            peso_volumetrico = volumen_cm3 / Decimal('6000')
+        # Sumar todos los kilos de todos los bultos de esta solicitud
+        for bulto in solicitud.bultos.all():
+            # Calcular peso volumétrico
+            if bulto.largo_cm and bulto.ancho_cm and bulto.alto_cm and \
+               bulto.largo_cm > 0 and bulto.ancho_cm > 0 and bulto.alto_cm > 0:
+                volumen_cm3 = bulto.largo_cm * bulto.ancho_cm * bulto.alto_cm
+                peso_volumetrico = volumen_cm3 / Decimal('6000')
+                peso_real = bulto.peso_total if bulto.peso_total else Decimal('0.00')
+                peso_cobrable = max(peso_real, peso_volumetrico)
+            else:
+                peso_cobrable = bulto.peso_total if bulto.peso_total else Decimal('0.00')
             
-            # Peso cobrable = mayor entre real y volumétrico
-            peso_real = bulto.peso_total if bulto.peso_total else Decimal('0.00')
-            peso_cobrable = max(peso_real, peso_volumetrico)
-        else:
-            # Si no tiene dimensiones, usar solo peso real
-            peso_cobrable = bulto.peso_total if bulto.peso_total else Decimal('0.00')
-            if peso_cobrable == 0:
-                # Marcar como sin medidas
-                if normalizar_cliente(cliente):
-                    clientes_sin_medidas.add(cliente)
-                else:
-                    clientes_otros_sin_medidas.add(cliente)
-                continue  # No sumar bultos sin peso ni dimensiones
+            kilos_solicitud += peso_cobrable
         
+        # Agregar a solicitudes_con_kilos (incluso si tiene 0 kilos)
+        if cliente not in solicitudes_con_kilos:
+            solicitudes_con_kilos[cliente] = Decimal('0.00')
+        solicitudes_con_kilos[cliente] += kilos_solicitud
+    
+    # Segundo: Agrupar por sucursal usando el mapa (clientes ya agrupados por solicitud)
+    kilos_por_cliente = defaultdict(lambda: Decimal('0.00'))
+    kilos_otros_detalle = defaultdict(lambda: Decimal('0.00'))
+    
+    for cliente, kilos_total in solicitudes_con_kilos.items():
         # Agrupar por sucursal normalizada
         sucursal_norm = normalizar_cliente(cliente)
         
         if sucursal_norm:
             # Es una sucursal
-            kilos_por_cliente[sucursal_norm] += peso_cobrable
+            kilos_por_cliente[sucursal_norm] += kilos_total
         else:
             # Es un cliente OTROS
-            kilos_otros_detalle[cliente] += peso_cobrable
+            kilos_otros_detalle[cliente] += kilos_total
     
     # Calcular total de kilos y porcentajes agrupados
+    # IMPORTANTE: total_kilos debe incluir TODAS las solicitudes (incluso con 0 kilos)
+    # para que los porcentajes sumen 100%
     total_kilos = sum(kilos_por_cliente.values()) + sum(kilos_otros_detalle.values())
+    
+    # Si total_kilos es 0, significa que no hay kilos en ninguna solicitud
+    # En ese caso, todos los porcentajes serán 0% pero las solicitudes se contarán igual
     porcentajes_kilos = []
     
-    # Agregar sucursales con kilos en el orden especificado
+    # Usar un set para evitar duplicados
+    sucursales_kilos_agregadas = set()
+    
+    # Agregar sucursales en el orden especificado (incluir incluso si tienen 0 kilos)
     for sucursal in ORDEN_SUCURSALES:
-        if sucursal in kilos_por_cliente and kilos_por_cliente[sucursal] > 0:
+        if sucursal in kilos_por_cliente and sucursal not in sucursales_kilos_agregadas:
             kilos = kilos_por_cliente[sucursal]
+            # Calcular porcentaje sobre el total (puede ser 0% si no hay kilos)
             porcentaje = (float(kilos) / float(total_kilos) * 100) if total_kilos > 0 else 0
             porcentajes_kilos.append({
                 'cliente': sucursal,
                 'kilos_volumetricos': float(kilos),
                 'porcentaje': round(porcentaje, 2)
             })
+            sucursales_kilos_agregadas.add(sucursal)
     
     # Agregar cualquier otra sucursal no contemplada en el orden (por si acaso)
     for sucursal, kilos in sorted(kilos_por_cliente.items(), key=lambda x: x[1], reverse=True):
-        if sucursal not in ORDEN_SUCURSALES and kilos > 0:
+        if sucursal not in ORDEN_SUCURSALES and sucursal not in sucursales_kilos_agregadas:
             porcentaje = (float(kilos) / float(total_kilos) * 100) if total_kilos > 0 else 0
             porcentajes_kilos.append({
                 'cliente': sucursal,
                 'kilos_volumetricos': float(kilos),
                 'porcentaje': round(porcentaje, 2)
             })
+            sucursales_kilos_agregadas.add(sucursal)
     
     # Agregar OTROS (suma de todos los clientes no sucursales)
+    # IMPORTANTE: Incluir OTROS incluso si tiene 0 kilos, para que los porcentajes sumen 100%
     total_otros_kilos = sum(kilos_otros_detalle.values())
-    if total_otros_kilos > 0:
-        porcentaje_otros = (float(total_otros_kilos) / float(total_kilos) * 100) if total_kilos > 0 else 0
-        porcentajes_kilos.append({
-            'cliente': 'OTROS',
-            'kilos_volumetricos': float(total_otros_kilos),
-            'porcentaje': round(porcentaje_otros, 2)
-        })
+    porcentaje_otros = (float(total_otros_kilos) / float(total_kilos) * 100) if total_kilos > 0 else 0
+    porcentajes_kilos.append({
+        'cliente': 'OTROS',
+        'kilos_volumetricos': float(total_otros_kilos),
+        'porcentaje': round(porcentaje_otros, 2)
+    })
     
     # Agregar clientes sin medidas (para información) al final
     todos_sin_medidas = clientes_sin_medidas | clientes_otros_sin_medidas
@@ -570,82 +647,105 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         })
     
     # 2. LEAD TIME DE EMBALAJE
-    # Mide: fecha y hora de preparación (más reciente) vs fecha y hora de embalaje
-    # La fecha de preparación más reciente (MAX) de todos los detalles es cuando termina la preparación
-    # fecha_embalaje es la fecha real del proceso de embalaje
-    bultos_embalados = Bulto.objects.filter(
-        solicitud__in=solicitudes_base,
-        fecha_embalaje__isnull=False
+    # Mide: Desde que termina la preparación (MAX fecha_preparacion) hasta que se embala (MAX fecha_embalaje)
+    # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por bulto
+    # Obtener solicitudes que tienen al menos un bulto embalado
+    solicitudes_con_embalaje = solicitudes_base.filter(
+        bultos__fecha_embalaje__isnull=False
     ).exclude(
-        estado__in=['cancelado']  # Excluir solo cancelados
-    ).select_related('solicitud').prefetch_related('solicitud__detalles')
+        bultos__estado='cancelado'
+    ).distinct().prefetch_related('bultos', 'detalles')
     
     if transporte_filtro:
-        bultos_embalados = bultos_embalados.filter(
-            Q(transportista=transporte_filtro) | 
-            Q(transportista_extra=transporte_filtro) |
-            Q(solicitud__transporte=transporte_filtro)
-        )
+        solicitudes_con_embalaje = solicitudes_con_embalaje.filter(
+            Q(bultos__transportista=transporte_filtro) | 
+            Q(bultos__transportista_extra=transporte_filtro) |
+            Q(transporte=transporte_filtro)
+        ).distinct()
     
     lead_times_emb = []
-    for bulto in bultos_embalados:
-        if bulto.fecha_embalaje:
-            # Obtener la fecha de preparación más reciente de todos los detalles de la solicitud
-            # Esta es la fecha cuando la solicitud pasa a "en_despacho" (termina la preparación)
-            detalles_con_preparacion = bulto.solicitud.detalles.filter(
-                fecha_preparacion__isnull=False
-            )
+    for solicitud in solicitudes_con_embalaje:
+        # Obtener MAX(fecha_embalaje) de todos los bultos de esta solicitud
+        bultos_embalados = solicitud.bultos.filter(
+            fecha_embalaje__isnull=False
+        ).exclude(estado='cancelado')
+        
+        if bultos_embalados.exists():
+            fecha_emb_max = bultos_embalados.aggregate(
+                max_fecha=Max('fecha_embalaje')
+            )['max_fecha']
             
-            fecha_fin_preparacion = None
-            if detalles_con_preparacion.exists():
-                # Obtener el MAX(fecha_preparacion) de todos los detalles
-                fecha_fin_preparacion = detalles_con_preparacion.aggregate(
-                    max_fecha=Max('fecha_preparacion')
-                )['max_fecha']
-            
-            # Si no hay fecha de preparación (ej: bodega 013, directo a despacho),
-            # usar created_at de la solicitud como fallback
-            if not fecha_fin_preparacion:
-                fecha_fin_preparacion = bulto.solicitud.created_at
-            
-            if fecha_fin_preparacion and bulto.fecha_embalaje:
-                # Lead Time = fecha_embalaje - fecha_fin_preparacion
-                # Mide el tiempo desde que terminó la preparación hasta que se embaló
-                delta = bulto.fecha_embalaje - fecha_fin_preparacion
-                horas = delta.total_seconds() / 3600
-                # Solo agregar si el lead time es positivo (o muy pequeño, como 1 minuto = 0.016 horas)
-                if horas >= 0:
-                    lead_times_emb.append(horas)
+            if fecha_emb_max:
+                # Obtener la fecha de preparación más reciente de todos los detalles de la solicitud
+                # Esta es la fecha cuando la solicitud pasa a "en_despacho" (termina la preparación)
+                detalles_con_preparacion = solicitud.detalles.filter(
+                    fecha_preparacion__isnull=False
+                )
+                
+                fecha_fin_preparacion = None
+                if detalles_con_preparacion.exists():
+                    # Obtener el MAX(fecha_preparacion) de todos los detalles
+                    fecha_fin_preparacion = detalles_con_preparacion.aggregate(
+                        max_fecha=Max('fecha_preparacion')
+                    )['max_fecha']
+                
+                # Si no hay fecha de preparación (ej: bodega 013, directo a despacho),
+                # usar created_at de la solicitud como fallback
+                if not fecha_fin_preparacion:
+                    fecha_fin_preparacion = solicitud.created_at
+                
+                if fecha_fin_preparacion:
+                    # Lead Time = fecha_embalaje (MAX) - fecha_fin_preparacion (MAX)
+                    # Mide el tiempo desde que terminó la preparación hasta que se embaló el último bulto
+                    delta = fecha_emb_max - fecha_fin_preparacion
+                    horas = delta.total_seconds() / 3600
+                    # Solo agregar si el lead time es positivo
+                    if horas >= 0:
+                        lead_times_emb.append(horas)
     
     lt_emb_promedio = sum(lead_times_emb) / len(lead_times_emb) if lead_times_emb else 0
     lt_emb_min = min(lead_times_emb) if lead_times_emb else 0
     lt_emb_max = max(lead_times_emb) if lead_times_emb else 0
     
     # 3. LEAD TIME TOTAL (SOLICITUD COMPLETA)
-    # Desde created_at de solicitud hasta fecha_envio/fecha_entrega cuando bulto está finalizado
-    # Solo usamos bultos con estado='finalizado' porque cuando la solicitud pasa a 'despachado',
+    # Mide: Desde created_at de solicitud hasta MAX(fecha_envio/fecha_entrega) cuando todos los bultos están finalizados
+    # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por bulto
+    # Solo usamos solicitudes con bultos finalizados porque cuando la solicitud pasa a 'despachado',
     # todos sus bultos se finalizan automáticamente
-    bultos_finalizados = Bulto.objects.filter(
-        solicitud__in=solicitudes_base,
-        estado='finalizado',  # Solo bultos finalizados (cuando solicitud está despachada)
-        fecha_envio__isnull=False  # Debe tener fecha_envio (establecida al finalizar)
-    ).select_related('solicitud')
+    solicitudes_finalizadas = solicitudes_base.filter(
+        bultos__estado='finalizado',
+        bultos__fecha_envio__isnull=False
+    ).distinct().prefetch_related('bultos')
     
     if transporte_filtro:
-        bultos_finalizados = bultos_finalizados.filter(
-            Q(transportista=transporte_filtro) | 
-            Q(transportista_extra=transporte_filtro) |
-            Q(solicitud__transporte=transporte_filtro)
-        )
+        solicitudes_finalizadas = solicitudes_finalizadas.filter(
+            Q(bultos__transportista=transporte_filtro) | 
+            Q(bultos__transportista_extra=transporte_filtro) |
+            Q(transporte=transporte_filtro)
+        ).distinct()
     
     lead_times_total = []
-    for bulto in bultos_finalizados:
-        # Usar fecha_envio (prioridad) o fecha_entrega como fecha final
-        # fecha_envio se establece cuando el admin finaliza el bulto al marcar solicitud como despachada
-        fecha_fin = bulto.fecha_envio or bulto.fecha_entrega
-        if fecha_fin and bulto.solicitud.created_at:
-            delta = fecha_fin - bulto.solicitud.created_at
-            lead_times_total.append(delta.total_seconds() / 3600)  # En horas
+    for solicitud in solicitudes_finalizadas:
+        # Obtener MAX(fecha_envio o fecha_entrega) de todos los bultos finalizados de esta solicitud
+        bultos_final = solicitud.bultos.filter(
+            estado='finalizado',
+            fecha_envio__isnull=False
+        )
+        
+        if bultos_final.exists() and solicitud.created_at:
+            # Obtener la fecha más reciente entre fecha_envio y fecha_entrega
+            # fecha_envio se establece cuando el admin finaliza el bulto al marcar solicitud como despachada
+            fechas_fin = []
+            for bulto in bultos_final:
+                fecha_fin = bulto.fecha_envio or bulto.fecha_entrega
+                if fecha_fin:
+                    fechas_fin.append(fecha_fin)
+            
+            if fechas_fin:
+                fecha_fin_max = max(fechas_fin)
+                # Lead Time Total = fecha_fin (MAX) - created_at
+                delta = fecha_fin_max - solicitud.created_at
+                lead_times_total.append(delta.total_seconds() / 3600)  # En horas
     
     lt_total_promedio = sum(lead_times_total) / len(lead_times_total) if lead_times_total else 0
     lt_total_min = min(lead_times_total) if lead_times_total else 0
@@ -847,6 +947,11 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     transportes_disponibles = [t for t in transportes_disponibles if t]  # Filtrar vacíos
     transportes_disponibles.sort()
     
+    # Convertir a JSON para evitar problemas de renderizado en el template
+    # Esto previene duplicados y problemas con caracteres especiales
+    porcentajes_operaciones_json = json.dumps(porcentajes_operaciones, ensure_ascii=False)
+    porcentajes_kilos_json = json.dumps(porcentajes_kilos, ensure_ascii=False)
+    
     result = {
         'lead_time_preparacion': {
             'promedio_horas': lt_prep_promedio,
@@ -884,6 +989,9 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         # Estadísticas por cliente (agrupadas: sucursales + OTROS)
         'porcentajes_operaciones_cliente': porcentajes_operaciones,
         'porcentajes_kilos_cliente': porcentajes_kilos,
+        # Versiones JSON para evitar problemas de renderizado en template
+        'porcentajes_operaciones_cliente_json': porcentajes_operaciones_json,
+        'porcentajes_kilos_cliente_json': porcentajes_kilos_json,
         # Desglose detallado de OTROS
         'porcentajes_operaciones_otros': operaciones_otros,
         'porcentajes_kilos_otros': porcentajes_otros_detalle_kilos

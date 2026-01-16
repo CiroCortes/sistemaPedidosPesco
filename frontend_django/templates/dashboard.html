@@ -791,23 +791,42 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // Gráfico de Solicitudes por Cliente
+        // SOLUCIÓN: Usar JSON para evitar problemas de renderizado y duplicados en el template
         const ctxOperacionesCliente = document.getElementById('chartOperacionesCliente');
         if (ctxOperacionesCliente) {
-            const clientesOperaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
-            const porcentajesOperaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
-            const operaciones = [{% for item in indicadores.porcentajes_operaciones_cliente %}{{ item.operaciones|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            // Obtener datos desde JSON (más confiable que iterar en template)
+            const datosOperaciones = {% if indicadores.porcentajes_operaciones_cliente_json %}{{ indicadores.porcentajes_operaciones_cliente_json|safe }}{% else %}[]{% endif %};
+            
+            // Extraer arrays desde JSON
+            const clientesOperaciones = datosOperaciones.map(item => item.cliente || '');
+            const porcentajesOperaciones = datosOperaciones.map(item => parseFloat(item.porcentaje) || 0);
+            const operaciones = datosOperaciones.map(item => parseInt(item.operaciones) || 0);
             
             // Debug: Verificar cuántas categorías hay
             console.log('📊 Gráfico Operaciones - Categorías:', clientesOperaciones.length, clientesOperaciones);
             console.log('📊 Gráfico Operaciones - Porcentajes:', porcentajesOperaciones);
+            console.log('📊 Gráfico Operaciones - Operaciones:', operaciones);
             
             // Validar que todos los arrays tengan la misma longitud
             const minLength = Math.min(clientesOperaciones.length, porcentajesOperaciones.length, operaciones.length);
+            const maxLength = Math.max(clientesOperaciones.length, porcentajesOperaciones.length, operaciones.length);
+            
+            if (minLength !== maxLength) {
+                console.warn(`⚠️ ADVERTENCIA: Arrays con longitudes diferentes. Clientes: ${clientesOperaciones.length}, Porcentajes: ${porcentajesOperaciones.length}, Operaciones: ${operaciones.length}`);
+                console.warn('Usando solo los primeros', minLength, 'elementos');
+            }
+            
             if (minLength > 0) {
-                // Asegurar que todos los arrays tengan la misma longitud
+                // Asegurar que todos los arrays tengan la misma longitud (usar solo los primeros minLength elementos)
                 const clientesFinal = clientesOperaciones.slice(0, minLength);
                 const porcentajesFinal = porcentajesOperaciones.slice(0, minLength);
                 const operacionesFinal = operaciones.slice(0, minLength).map(v => v || 0);
+                
+                // Verificar que los porcentajes sumen 100%
+                const sumaPorcentajes = porcentajesFinal.reduce((a, b) => a + b, 0);
+                if (Math.abs(sumaPorcentajes - 100) > 0.1) {
+                    console.warn(`⚠️ ADVERTENCIA: Los porcentajes suman ${sumaPorcentajes.toFixed(2)}% en lugar de 100%`);
+                }
                 
                 // Asignar colores según el nombre de la categoría (mapeo fijo)
                 const colors = clientesFinal.map(cliente => getColorForCategory(cliente));
@@ -891,23 +910,42 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // Gráfico de Kilos Volumétricos por Cliente
+        // SOLUCIÓN: Usar JSON para evitar problemas de renderizado y duplicados en el template
         const ctxKilosCliente = document.getElementById('chartKilosCliente');
         if (ctxKilosCliente) {
-            const clientesKilos = [{% for item in indicadores.porcentajes_kilos_cliente %}'{{ item.cliente|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}];
-            const porcentajesKilos = [{% for item in indicadores.porcentajes_kilos_cliente %}{{ item.porcentaje|default:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
-            const valoresKilos = [{% for item in indicadores.porcentajes_kilos_cliente %}{{ item.kilos_volumetricos|default:0|floatformat:2 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+            // Obtener datos desde JSON (más confiable que iterar en template)
+            const datosKilos = {% if indicadores.porcentajes_kilos_cliente_json %}{{ indicadores.porcentajes_kilos_cliente_json|safe }}{% else %}[]{% endif %};
+            
+            // Extraer arrays desde JSON
+            const clientesKilos = datosKilos.map(item => item.cliente || '');
+            const porcentajesKilos = datosKilos.map(item => parseFloat(item.porcentaje) || 0);
+            const valoresKilos = datosKilos.map(item => parseFloat(item.kilos_volumetricos) || 0);
             
             // Debug: Verificar cuántas categorías hay
             console.log('📊 Gráfico Kilos - Categorías:', clientesKilos.length, clientesKilos);
             console.log('📊 Gráfico Kilos - Porcentajes:', porcentajesKilos);
+            console.log('📊 Gráfico Kilos - Valores:', valoresKilos);
             
             // Validar que todos los arrays tengan la misma longitud
             const minLengthKilos = Math.min(clientesKilos.length, porcentajesKilos.length, valoresKilos.length);
+            const maxLengthKilos = Math.max(clientesKilos.length, porcentajesKilos.length, valoresKilos.length);
+            
+            if (minLengthKilos !== maxLengthKilos) {
+                console.warn(`⚠️ ADVERTENCIA: Arrays con longitudes diferentes. Clientes: ${clientesKilos.length}, Porcentajes: ${porcentajesKilos.length}, Valores: ${valoresKilos.length}`);
+                console.warn('Usando solo los primeros', minLengthKilos, 'elementos');
+            }
+            
             if (minLengthKilos > 0) {
-                // Asegurar que todos los arrays tengan la misma longitud
+                // Asegurar que todos los arrays tengan la misma longitud (usar solo los primeros minLengthKilos elementos)
                 const clientesKilosFinal = clientesKilos.slice(0, minLengthKilos);
                 const porcentajesKilosFinal = porcentajesKilos.slice(0, minLengthKilos);
                 const valoresKilosFinal = valoresKilos.slice(0, minLengthKilos).map(v => parseFloat(v) || 0);
+                
+                // Verificar que los porcentajes sumen 100%
+                const sumaPorcentajesKilos = porcentajesKilosFinal.reduce((a, b) => a + b, 0);
+                if (Math.abs(sumaPorcentajesKilos - 100) > 0.1) {
+                    console.warn(`⚠️ ADVERTENCIA: Los porcentajes de kilos suman ${sumaPorcentajesKilos.toFixed(2)}% en lugar de 100%`);
+                }
                 
                 // Asignar colores según el nombre de la categoría (mapeo fijo)
                 const colorsKilos = clientesKilosFinal.map(cliente => getColorForCategory(cliente));
