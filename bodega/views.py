@@ -1,5 +1,7 @@
 import json
+from datetime import datetime
 
+import pytz
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -198,6 +200,7 @@ def gestion_pedidos(request):
     solicitudes_qs = (
         Solicitud.objects
         .filter(detalles__in=detalles_qs)
+        .exclude(estado='cancelado')  # Excluir solicitudes canceladas
         .select_related('solicitante')
         .distinct()
         .order_by('fecha_solicitud', 'id')
@@ -345,7 +348,21 @@ def registrar_transferencia(request, detalle_id):
             else:
                 detalle.estado_bodega = 'preparado'
                 detalle.preparado_por = request.user
-                detalle.fecha_preparacion = timezone.now()
+                
+                # Usar fecha/hora del formulario si fue editada, sino usar hora actual
+                if data.get('fecha_transferencia') and data.get('hora_transferencia'):
+                    # Combinar fecha y hora del formulario
+                    fecha_hora_naive = datetime.combine(
+                        data['fecha_transferencia'],
+                        data['hora_transferencia']
+                    )
+                    # Convertir a timezone-aware (Chile)
+                    chile_tz = pytz.timezone('America/Santiago')
+                    detalle.fecha_preparacion = chile_tz.localize(fecha_hora_naive)
+                else:
+                    # Fallback: usar hora actual si no hay fecha/hora en el formulario
+                    detalle.fecha_preparacion = timezone.now()
+                
                 if bodega_origen:
                     detalle.bodega = bodega_origen
                 detalle.save(update_fields=['estado_bodega', 'preparado_por', 'fecha_preparacion', 'bodega'])
@@ -451,7 +468,21 @@ def registrar_transferencia_multiple(request):
 
                 detalle.estado_bodega = 'preparado'
                 detalle.preparado_por = request.user
-                detalle.fecha_preparacion = timezone.now()
+                
+                # Usar fecha/hora del formulario si fue editada, sino usar hora actual
+                if data.get('fecha_transferencia') and data.get('hora_transferencia'):
+                    # Combinar fecha y hora del formulario
+                    fecha_hora_naive = datetime.combine(
+                        data['fecha_transferencia'],
+                        data['hora_transferencia']
+                    )
+                    # Convertir a timezone-aware (Chile)
+                    chile_tz = pytz.timezone('America/Santiago')
+                    detalle.fecha_preparacion = chile_tz.localize(fecha_hora_naive)
+                else:
+                    # Fallback: usar hora actual si no hay fecha/hora en el formulario
+                    detalle.fecha_preparacion = timezone.now()
+                
                 if bodega_origen:
                     detalle.bodega = bodega_origen
                 detalle.save(update_fields=['estado_bodega', 'preparado_por', 'fecha_preparacion', 'bodega'])

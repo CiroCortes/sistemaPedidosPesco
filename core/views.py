@@ -307,6 +307,14 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     ahora = timezone.now()
     fecha_inicio = ahora - timedelta(days=periodo_dias)
     
+    # ============================================================================
+    # OPTIMIZACIÓN: 3 CONSULTAS MASIVAS + PROCESAMIENTO EN PYTHON
+    # Reducimos de 900+ queries a solo 3 consultas masivas
+    # ============================================================================
+    
+    # Constantes para bodegas del dashboard
+    BODEGAS_DASHBOARD = ['013-03', '013-01', '013-PP', '013-PS', '013-09']
+    
     # Base queryset para solicitudes del período
     # Solo considerar solicitudes DESPACHADAS (trabajo completado)
     solicitudes_base = Solicitud.objects.filter(
@@ -314,42 +322,99 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         estado='despachado'  # Solo solicitudes despachadas
     )
     
+    # Aplicar filtro de transporte si existe
+    if transporte_filtro:
+        solicitudes_base = solicitudes_base.filter(
+            Q(bultos__transportista=transporte_filtro) | 
+            Q(bultos__transportista_extra=transporte_filtro) |
+            Q(transporte=transporte_filtro)
+        ).distinct()
+    
+    # CONSULTA 1: Solicitudes completas con detalles y bultos precargados
+    # PRECARGAR TODO: detalles y bultos en una sola query
+    solicitudes_completas = solicitudes_base.prefetch_related(
+        'detalles',
+        'bultos'
+    )
+    
+    # Convertir a lista UNA VEZ (evalúa la query y carga todo en memoria)
+    solicitudes_list = list(solicitudes_completas)
+    
+    # CONSULTA 2: Detalles por bodega (para Lead Time Bodegas)
+    
+    detalles_bodegas = SolicitudDetalle.objects.filter(
+        solicitud__created_at__gte=fecha_inicio,
+        solicitud__estado='despachado',
+        fecha_preparacion__isnull=False,
+        bodega__in=BODEGAS_DASHBOARD
+    ).select_related('solicitud')
+    
+    if transporte_filtro:
+        detalles_bodegas = detalles_bodegas.filter(
+            Q(solicitud__transporte=transporte_filtro) |
+            Q(solicitud__bultos__transportista=transporte_filtro) |
+            Q(solicitud__bultos__transportista_extra=transporte_filtro)
+        ).distinct()
+    
+    detalles_bodegas_list = list(detalles_bodegas)
+    
+    # CONSULTA 3: Bultos en despacho (para Solicitudes en Despacho)
+    # IMPORTANTE: Este indicador es diferente a los otros KPIs
+    # - Los otros KPIs trabajan con solicitudes DESPACHADAS (completadas)
+    # - Este indicador mide bultos PENDIENTES (listo_despacho, aún no despachados)
+    # Los bultos "listo_despacho" pertenecen a solicitudes EN PROCESO (no despachadas)
+    # Si la solicitud está 'despachado', los bultos ya están 'finalizado', no 'listo_despacho'
+    bultos_en_despacho = Bulto.objects.filter(
+        estado='listo_despacho',
+        fecha_envio__isnull=True,
+        fecha_embalaje__isnull=False,
+        solicitud__created_at__gte=fecha_inicio
+        # NO incluir: solicitud__estado='despachado' 
+        # (los bultos listo_despacho pertenecen a solicitudes activas/pendientes)
+    ).select_related('solicitud').prefetch_related('detalles')
+    
+    if transporte_filtro:
+        bultos_en_despacho = bultos_en_despacho.filter(
+            Q(transportista=transporte_filtro) | 
+            Q(transportista_extra=transporte_filtro) |
+            Q(solicitud__transporte=transporte_filtro)
+        )
+    
+    bultos_despacho_list = list(bultos_en_despacho)
+    
+    # ============================================================================
+    # PROCESAMIENTO EN PYTHON (sin queries adicionales)
+    # Todos los datos ya están precargados en memoria
+    # ============================================================================
+    
     # 1. LEAD TIME DE PREPARACIÓN
     # Mide: Tiempo desde created_at de solicitud hasta MAX(fecha_preparacion) de todos sus detalles
     # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por detalle
     # Una solicitud se considera preparada cuando el último detalle termina de prepararse
     
-    # OPTIMIZADO: Usar agregación de Django para obtener MAX(fecha_preparacion) por solicitud
-    # Esto evita N+1 queries y es mucho más rápido con Supabase
-    from django.db.models import OuterRef, Subquery
-    
-    # Subquery para obtener MAX(fecha_preparacion) por solicitud
-    max_fecha_prep = SolicitudDetalle.objects.filter(
-        solicitud=OuterRef('pk'),
-        fecha_preparacion__isnull=False
-    ).order_by('-fecha_preparacion').values('fecha_preparacion')[:1]
-    
-    # Obtener solicitudes con su MAX(fecha_preparacion) en una sola query
-    solicitudes_con_preparacion = solicitudes_base.filter(
-        detalles__fecha_preparacion__isnull=False
-    ).annotate(
-        fecha_prep_max=Subquery(max_fecha_prep)
-    ).distinct().only('id', 'created_at')
-    
     lead_times_prep = []
     # Diccionario para agrupar lead times por semana (año + número de semana ISO)
     lead_times_por_semana = {}
     
-    # Ahora iteramos sobre los resultados ya agregados (sin queries adicionales)
-    for solicitud in solicitudes_con_preparacion:
-        if solicitud.fecha_prep_max and solicitud.created_at:
+    # PROCESAMIENTO EN PYTHON: Los detalles ya están en memoria (prefetch_related)
+    for solicitud in solicitudes_list:
+        # Los detalles ya están en memoria, no necesitamos query adicional
+        fechas_prep = [
+            d.fecha_preparacion 
+            for d in solicitud.detalles.all() 
+            if d.fecha_preparacion
+        ]
+        
+        if fechas_prep and solicitud.created_at:
+            # Calcular MAX en Python (no query adicional)
+            fecha_prep_max = max(fechas_prep)
             # Lead Time = fecha_preparacion más reciente - created_at
-            delta = solicitud.fecha_prep_max - solicitud.created_at
+            delta = fecha_prep_max - solicitud.created_at
             horas = delta.total_seconds() / 3600
             lead_times_prep.append(horas)
             
             # Agrupar por SEMANA ISO (usar fecha de preparación como referencia)
-            fecha_prep = solicitud.fecha_prep_max.date()
+            fecha_prep = fecha_prep_max.date()
             iso_year, iso_week, iso_day = fecha_prep.isocalendar()
             
             # Clave única por semana: "2026-W02" (año-semana)
@@ -422,19 +487,22 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         return None
     
     # Estadísticas de operaciones por cliente (sin agrupar)
-    solicitudes_por_cliente = solicitudes_base.values('cliente').annotate(
-        total_operaciones=Count('id')
-    ).order_by('-total_operaciones')
+    # OPTIMIZADO: Usar solicitudes_list en memoria (no query adicional)
+    # IMPORTANTE: Agrupar primero por cliente (como hace la versión actual)
+    operaciones_por_cliente = defaultdict(int)
+    operaciones_sucursales = defaultdict(int)
     
-    total_operaciones = solicitudes_base.count()
+    # Contar operaciones por cliente desde solicitudes_list (ya en memoria)
+    for solicitud in solicitudes_list:
+        cliente = solicitud.cliente
+        operaciones_por_cliente[cliente] += 1
+    
+    total_operaciones = len(solicitudes_list)
     
     # Agrupar por sucursales y OTROS
-    operaciones_sucursales = defaultdict(int)
     operaciones_otros = []
     
-    for item in solicitudes_por_cliente:
-        cliente = item['cliente']
-        operaciones = item['total_operaciones']
+    for cliente, operaciones in operaciones_por_cliente.items():
         sucursal_norm = normalizar_cliente(cliente)
         
         if sucursal_norm:
@@ -497,46 +565,22 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # Estadísticas de kilos volumétricos por cliente
     # CORRECCIÓN: Agrupar primero por SOLICITUD (sumar todos los bultos de cada solicitud),
     # luego agrupar por cliente usando el mapa de sucursales
-    from despacho.models import Bulto
+    # OPTIMIZADO: Usar solicitudes_list en memoria (los bultos ya están precargados)
     
     # Primero: Agrupar kilos por SOLICITUD (sumar todos los bultos de cada solicitud)
     solicitudes_con_kilos = {}
     clientes_sin_medidas = set()
     clientes_otros_sin_medidas = set()
     
-    # OPTIMIZADO: Usar agregación de Django para calcular kilos por solicitud
-    # Esto evita N+1 queries iterando sobre bultos (muy lento con Supabase)
-    # Calcular peso cobrable usando expresiones de Django (se ejecuta en la BD)
-    peso_volumetrico_expr = Case(
-        When(
-            largo_cm__gt=0, ancho_cm__gt=0, alto_cm__gt=0,
-            then=(F('largo_cm') * F('ancho_cm') * F('alto_cm')) / Decimal('6000')
-        ),
-        default=Decimal('0.00'),
-        output_field=DecimalField(max_digits=10, decimal_places=2)
-    )
-    
-    peso_cobrable_expr = Case(
-        When(
-            largo_cm__gt=0, ancho_cm__gt=0, alto_cm__gt=0,
-            then=Greatest(Coalesce(F('peso_total'), 0), peso_volumetrico_expr)
-        ),
-        default=Coalesce(F('peso_total'), 0),
-        output_field=DecimalField(max_digits=10, decimal_places=2)
-    )
-    
     # IMPORTANTE: Incluir TODAS las solicitudes despachadas, incluso si no tienen bultos o los bultos no tienen peso
     # Esto asegura que los porcentajes sumen 100%
     
-    # Obtener todas las solicitudes con sus bultos precargados
-    solicitudes_con_bultos = solicitudes_base.prefetch_related('bultos')
-    
-    # Calcular kilos por solicitud (incluyendo las que tienen 0 kilos)
-    for solicitud in solicitudes_con_bultos:
+    # Calcular kilos por solicitud usando solicitudes_list (bultos ya precargados en memoria)
+    for solicitud in solicitudes_list:
         cliente = solicitud.cliente
         kilos_solicitud = Decimal('0.00')
         
-        # Sumar todos los kilos de todos los bultos de esta solicitud
+        # Los bultos ya están en memoria (prefetch_related), no necesitamos query adicional
         for bulto in solicitud.bultos.all():
             # Calcular peso volumétrico
             if bulto.largo_cm and bulto.ancho_cm and bulto.alto_cm and \
@@ -649,59 +693,38 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # 2. LEAD TIME DE EMBALAJE
     # Mide: Desde que termina la preparación (MAX fecha_preparacion) hasta que se embala (MAX fecha_embalaje)
     # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por bulto
-    # Obtener solicitudes que tienen al menos un bulto embalado
-    solicitudes_con_embalaje = solicitudes_base.filter(
-        bultos__fecha_embalaje__isnull=False
-    ).exclude(
-        bultos__estado='cancelado'
-    ).distinct().prefetch_related('bultos', 'detalles')
-    
-    if transporte_filtro:
-        solicitudes_con_embalaje = solicitudes_con_embalaje.filter(
-            Q(bultos__transportista=transporte_filtro) | 
-            Q(bultos__transportista_extra=transporte_filtro) |
-            Q(transporte=transporte_filtro)
-        ).distinct()
+    # OPTIMIZADO: Usar solicitudes_list en memoria (bultos y detalles ya precargados)
     
     lead_times_emb = []
-    for solicitud in solicitudes_con_embalaje:
-        # Obtener MAX(fecha_embalaje) de todos los bultos de esta solicitud
-        bultos_embalados = solicitud.bultos.filter(
-            fecha_embalaje__isnull=False
-        ).exclude(estado='cancelado')
+    for solicitud in solicitudes_list:
+        # Los bultos ya están en memoria (prefetch_related)
+        bultos_embalados = [
+            b for b in solicitud.bultos.all()
+            if b.fecha_embalaje and b.estado != 'cancelado'
+        ]
         
-        if bultos_embalados.exists():
-            fecha_emb_max = bultos_embalados.aggregate(
-                max_fecha=Max('fecha_embalaje')
-            )['max_fecha']
+        if bultos_embalados:
+            # Calcular MAX en Python (no query adicional)
+            fecha_emb_max = max(b.fecha_embalaje for b in bultos_embalados)
             
-            if fecha_emb_max:
-                # Obtener la fecha de preparación más reciente de todos los detalles de la solicitud
-                # Esta es la fecha cuando la solicitud pasa a "en_despacho" (termina la preparación)
-                detalles_con_preparacion = solicitud.detalles.filter(
-                    fecha_preparacion__isnull=False
-                )
-                
-                fecha_fin_preparacion = None
-                if detalles_con_preparacion.exists():
-                    # Obtener el MAX(fecha_preparacion) de todos los detalles
-                    fecha_fin_preparacion = detalles_con_preparacion.aggregate(
-                        max_fecha=Max('fecha_preparacion')
-                    )['max_fecha']
-                
-                # Si no hay fecha de preparación (ej: bodega 013, directo a despacho),
-                # usar created_at de la solicitud como fallback
-                if not fecha_fin_preparacion:
-                    fecha_fin_preparacion = solicitud.created_at
-                
-                if fecha_fin_preparacion:
-                    # Lead Time = fecha_embalaje (MAX) - fecha_fin_preparacion (MAX)
-                    # Mide el tiempo desde que terminó la preparación hasta que se embaló el último bulto
-                    delta = fecha_emb_max - fecha_fin_preparacion
-                    horas = delta.total_seconds() / 3600
-                    # Solo agregar si el lead time es positivo
-                    if horas >= 0:
-                        lead_times_emb.append(horas)
+            # Los detalles ya están en memoria (prefetch_related)
+            fechas_prep = [
+                d.fecha_preparacion 
+                for d in solicitud.detalles.all() 
+                if d.fecha_preparacion
+            ]
+            
+            # Calcular MAX en Python (no query adicional)
+            fecha_fin_preparacion = max(fechas_prep) if fechas_prep else solicitud.created_at
+            
+            if fecha_fin_preparacion:
+                # Lead Time = fecha_embalaje (MAX) - fecha_fin_preparacion (MAX)
+                # Mide el tiempo desde que terminó la preparación hasta que se embaló el último bulto
+                delta = fecha_emb_max - fecha_fin_preparacion
+                horas = delta.total_seconds() / 3600
+                # Solo agregar si el lead time es positivo
+                if horas >= 0:
+                    lead_times_emb.append(horas)
     
     lt_emb_promedio = sum(lead_times_emb) / len(lead_times_emb) if lead_times_emb else 0
     lt_emb_min = min(lead_times_emb) if lead_times_emb else 0
@@ -712,27 +735,17 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por bulto
     # Solo usamos solicitudes con bultos finalizados porque cuando la solicitud pasa a 'despachado',
     # todos sus bultos se finalizan automáticamente
-    solicitudes_finalizadas = solicitudes_base.filter(
-        bultos__estado='finalizado',
-        bultos__fecha_envio__isnull=False
-    ).distinct().prefetch_related('bultos')
-    
-    if transporte_filtro:
-        solicitudes_finalizadas = solicitudes_finalizadas.filter(
-            Q(bultos__transportista=transporte_filtro) | 
-            Q(bultos__transportista_extra=transporte_filtro) |
-            Q(transporte=transporte_filtro)
-        ).distinct()
+    # OPTIMIZADO: Usar solicitudes_list en memoria (bultos ya precargados)
     
     lead_times_total = []
-    for solicitud in solicitudes_finalizadas:
-        # Obtener MAX(fecha_envio o fecha_entrega) de todos los bultos finalizados de esta solicitud
-        bultos_final = solicitud.bultos.filter(
-            estado='finalizado',
-            fecha_envio__isnull=False
-        )
+    for solicitud in solicitudes_list:
+        # Los bultos ya están en memoria (prefetch_related)
+        bultos_final = [
+            b for b in solicitud.bultos.all()
+            if b.estado == 'finalizado' and b.fecha_envio
+        ]
         
-        if bultos_final.exists() and solicitud.created_at:
+        if bultos_final and solicitud.created_at:
             # Obtener la fecha más reciente entre fecha_envio y fecha_entrega
             # fecha_envio se establece cuando el admin finaliza el bulto al marcar solicitud como despachada
             fechas_fin = []
@@ -742,6 +755,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
                     fechas_fin.append(fecha_fin)
             
             if fechas_fin:
+                # Calcular MAX en Python (no query adicional)
                 fecha_fin_max = max(fechas_fin)
                 # Lead Time Total = fecha_fin (MAX) - created_at
                 delta = fecha_fin_max - solicitud.created_at
@@ -751,34 +765,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     lt_total_min = min(lead_times_total) if lead_times_total else 0
     lt_total_max = max(lead_times_total) if lead_times_total else 0
     
-    # 4. CÓDIGOS EN DESPACHO (con días y valorización)
-    # Bultos con estado 'listo_despacho' pero sin fecha_envio
-    # OPTIMIZADO: Usar prefetch_related para evitar N+1 queries
-    from django.db.models import Prefetch
-    
-    bultos_en_despacho = Bulto.objects.filter(
-        estado='listo_despacho',
-        fecha_envio__isnull=True,
-        fecha_embalaje__isnull=False
-    ).select_related('solicitud').prefetch_related(
-        Prefetch(
-            'detalles',  # related_name en SolicitudDetalle.bulto
-            queryset=SolicitudDetalle.objects.all(),
-            to_attr='detalles_precargados'
-        )
-    )
-    
-    if transporte_filtro:
-        bultos_en_despacho = bultos_en_despacho.filter(
-            Q(transportista=transporte_filtro) | 
-            Q(transportista_extra=transporte_filtro) |
-            Q(solicitud__transporte=transporte_filtro)
-        )
-    
-    # Bodegas de uso cotidiano para el dashboard
-    BODEGAS_DASHBOARD = ['013-03', '013-01', '013-PP', '013-PS', '013-09']
-    
-    # Obtener nombres de bodegas desde el modelo
+    # Obtener nombres de bodegas desde el modelo (una sola query)
     from .models import Bodega
     bodegas_info = {
         b.codigo: b.nombre 
@@ -796,15 +783,9 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'cantidad_operaciones': 0
         }
     
-    # Obtener todos los detalles preparados del período con sus bodegas
-    detalles_preparados_bodegas = SolicitudDetalle.objects.filter(
-        solicitud__in=solicitudes_base,
-        fecha_preparacion__isnull=False,
-        bodega__in=BODEGAS_DASHBOARD
-    ).select_related('solicitud')
-    
+    # OPTIMIZADO: Usar detalles_bodegas_list (ya precargados en consulta 2)
     # Agregar lead times calculados
-    for detalle in detalles_preparados_bodegas:
+    for detalle in detalles_bodegas_list:
         bodega_codigo = detalle.bodega.strip() if detalle.bodega else ''
         
         # Filtrar: solo bodegas de uso cotidiano
@@ -812,6 +793,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             continue
         
         # Calcular lead time: desde created_at de solicitud hasta fecha_preparacion del detalle
+        # La solicitud ya está precargada (select_related)
         if detalle.fecha_preparacion and detalle.solicitud.created_at:
             delta = detalle.fecha_preparacion - detalle.solicitud.created_at
             horas = delta.total_seconds() / 3600
@@ -856,15 +838,14 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # Agrupar por transporte y calcular métricas
     solicitudes_por_transporte = {}
     
+    # OPTIMIZADO: Usar bultos_despacho_list (ya precargados en consulta 3)
     # Primero, recopilar todos los códigos únicos para hacer batch query de precios
     todos_codigos = set()
     detalles_por_bulto = {}
     
-    for bulto in bultos_en_despacho:
-        if hasattr(bulto, 'detalles_precargados'):
-            detalles = bulto.detalles_precargados
-        else:
-            detalles = list(bulto.detalles.all())
+    for bulto in bultos_despacho_list:
+        # Los detalles ya están precargados (prefetch_related)
+        detalles = list(bulto.detalles.all())
         
         detalles_por_bulto[bulto.id] = (bulto, detalles)
         for detalle in detalles:
