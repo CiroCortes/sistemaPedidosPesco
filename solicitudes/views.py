@@ -926,6 +926,110 @@ def cambiar_estado_solicitud(request, pk):
 
 @login_required
 @role_required(['admin'])
+def actualizacion_masiva(request):
+    """
+    Actualización masiva de solicitudes desde Excel (base bruta despacho).
+    Solo admin. Permite previsualizar o ejecutar la actualización.
+    """
+    from .bulk_update import procesar_excel_bruto, ejecutar_completo
+
+    if request.method != 'POST':
+        return render(request, 'solicitudes/actualizacion_masiva.html', {})
+
+    archivo = request.FILES.get('archivo')
+    if not archivo:
+        messages.error(request, 'Debe seleccionar un archivo Excel.')
+        return render(request, 'solicitudes/actualizacion_masiva.html', {})
+
+    try:
+        contenido = archivo.read()
+    except Exception as e:
+        messages.error(request, f'Error al leer el archivo: {e}')
+        return render(request, 'solicitudes/actualizacion_masiva.html', {})
+
+    solo_preview = 'preview' in request.POST  # Botón "Previsualizar"
+    # Si no es preview, ejecutamos la actualización real
+
+    if solo_preview:
+        pedidos, errores = procesar_excel_bruto(contenido)
+        if errores:
+            for e in errores:
+                messages.error(request, e)
+            return render(request, 'solicitudes/actualizacion_masiva.html', {})
+
+        # Dry run: misma lógica de matching que ejecutar_actualizacion_masiva
+        from .models import Solicitud
+
+        encontrados = 0
+        no_encontrados = []
+        for ped in pedidos:
+            numero = ped['numero']
+            tipo = ped.get('tipo', 'PC')
+            cliente = ped.get('cliente', '') or ''
+            fechas_posibles = ped.get('fechas_posibles') or []
+            if ped.get('fecha'):
+                d = ped['fecha'].date() if hasattr(ped['fecha'], 'date') else ped['fecha']
+                if d and d not in fechas_posibles:
+                    fechas_posibles = [d] + fechas_posibles
+
+            base = Solicitud.objects.filter(tipo=tipo)
+            if tipo == 'ST':
+                base = base.filter(numero_st=numero)
+            else:
+                base = base.filter(numero_pedido=numero)
+            if cliente:
+                base = base.filter(cliente__icontains=cliente[:50])
+
+            match = False
+            for f in fechas_posibles:
+                if base.filter(fecha_solicitud=f).exists():
+                    match = True
+                    break
+            if not match and base.count() == 1:
+                match = True
+
+            if match:
+                encontrados += 1
+            else:
+                no_encontrados.append({
+                    'numero': numero,
+                    'tipo': tipo,
+                    'fecha': ped.get('fecha_str', ''),
+                    'cliente': cliente[:50] if cliente else '-'
+                })
+
+        return render(request, 'solicitudes/actualizacion_masiva.html', {
+            'preview': True,
+            'total_pedidos': len(pedidos),
+            'encontrados': encontrados,
+            'no_encontrados': no_encontrados[:30],
+            'total_no_encontrados': len(no_encontrados),
+        })
+
+    # Ejecutar flujo completo: fase bodega + fase despacho
+    resultado = ejecutar_completo(contenido)
+    dep = resultado.get('fase_despacho', {})
+
+    if dep.get('errores'):
+        for e in dep['errores']:
+            messages.error(request, e)
+        return render(request, 'solicitudes/actualizacion_masiva.html', {})
+
+    msgs = []
+    if resultado.get('detalles_preparados', 0) > 0:
+        msgs.append(f"{resultado['detalles_preparados']} detalles confirmados desde bodega")
+    if resultado.get('solicitudes_en_despacho', 0) > 0:
+        msgs.append(f"{resultado['solicitudes_en_despacho']} solicitudes pasadas a en_despacho")
+    if dep.get('actualizados', 0) > 0:
+        msgs.append(f"{dep['actualizados']} solicitudes actualizadas (despacho)")
+    if dep.get('total_no_encontrados', 0) > 0:
+        msgs.append(f"{dep['total_no_encontrados']} no encontradas")
+    messages.success(request, '. '.join(msgs) if msgs else 'Proceso completado.')
+    return redirect('solicitudes:actualizacion_masiva')
+
+
+@login_required
+@role_required(['admin'])
 def cambiar_afecta_stock(request, pk):
     """
     Permite al admin cambiar el flag afecta_stock de una solicitud.

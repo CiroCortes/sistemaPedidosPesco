@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Actualización masiva - Sistema PESCO{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1 text-gray-800">Actualización masiva desde Excel</h1>
+            <p class="text-muted mb-0">
+                Cargue la base bruta de despacho para actualizar estados, guías, transporte y OT de las solicitudes.
+            </p>
+        </div>
+        <a href="{% url 'solicitudes:lista' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Volver a solicitudes
+        </a>
+    </div>
+
+    {% if not preview %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title mb-3"><i class="bi bi-file-earmark-excel text-success me-2"></i>Archivo base bruta despacho</h5>
+            <p class="text-muted small mb-3">
+                Columnas esperadas: <strong>fecha</strong>, <strong>NUMERO</strong>, <strong>Cliente</strong>, <strong>ESTATUS</strong>,
+                <strong>N° Guia</strong>, <strong>Transporte</strong>, <strong>OT</strong>.
+            </p>
+
+            <form method="post" enctype="multipart/form-data" class="row g-3 align-items-end">
+                {% csrf_token %}
+                <div class="col-md-6">
+                    <label for="archivo" class="form-label">Archivo Excel (.xlsx)</label>
+                    <input type="file" name="archivo" id="archivo" class="form-control" accept=".xlsx,.xls" required>
+                </div>
+                <div class="col-md-6">
+                    <button type="submit" name="preview" value="1" class="btn btn-outline-primary me-2">
+                        <i class="bi bi-eye"></i> Previsualizar
+                    </button>
+                    <button type="submit" name="ejecutar" value="1" class="btn btn-primary"
+                            onclick="return confirm('¿Ejecutar la actualización real? Se modificarán las solicitudes encontradas.');">
+                        <i class="bi bi-check-circle"></i> Ejecutar actualización
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Resultado de la previsualización</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <div class="p-3 bg-light rounded">
+                        <div class="h4 mb-0">{{ total_pedidos }}</div>
+                        <small class="text-muted">Pedidos en el Excel</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="p-3 bg-success bg-opacity-10 rounded">
+                        <div class="h4 mb-0 text-success">{{ encontrados }}</div>
+                        <small class="text-muted">Encontrados en el sistema</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="p-3 bg-warning bg-opacity-10 rounded">
+                        <div class="h4 mb-0 text-warning">{{ total_no_encontrados }}</div>
+                        <small class="text-muted">No encontrados</small>
+                    </div>
+                </div>
+            </div>
+
+            {% if no_encontrados %}
+            <details class="mb-3">
+                <summary class="text-muted small cursor-pointer">Ver pedidos no encontrados (máx. 30)</summary>
+                <table class="table table-sm table-striped mt-2">
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Tipo</th>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in no_encontrados %}
+                        <tr>
+                            <td>{{ p.numero }}</td>
+                            <td>{{ p.tipo|default:"-" }}</td>
+                            <td>{{ p.fecha }}</td>
+                            <td>{{ p.cliente }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </details>
+            {% endif %}
+
+            {% if encontrados > 0 %}
+            <div class="card bg-light border-0 mb-3">
+                <div class="card-body">
+                    <h6 class="card-title mb-2"><i class="bi bi-check-circle text-success me-2"></i>Aplicar actualizaciones</h6>
+                    <p class="text-muted small mb-3">
+                        Se actualizarán <strong>{{ encontrados }}</strong> solicitudes (estado, guía, transporte, OT).
+                        Seleccione el mismo archivo y haga clic en Ejecutar.
+                    </p>
+                    <form method="post" enctype="multipart/form-data" class="row g-3 align-items-end">
+                        {% csrf_token %}
+                        <div class="col-md-6">
+                            <input type="file" name="archivo" class="form-control" accept=".xlsx,.xls" required>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="submit" name="ejecutar" value="1" class="btn btn-success"
+                                    onclick="return confirm('¿Ejecutar la actualización? Se modificarán {{ encontrados }} solicitudes.');">
+                                <i class="bi bi-check-lg"></i> Ejecutar actualización
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            <a href="{% url 'solicitudes:actualizacion_masiva' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Subir otro archivo
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
