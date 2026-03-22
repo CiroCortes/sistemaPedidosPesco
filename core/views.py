@@ -144,9 +144,10 @@ def dashboard(request):
             pendientes=Count('id', filter=Q(estado='pendiente')),
             en_despacho=Count('id', filter=Q(estado='en_despacho')),
             embaladas=Count('id', filter=Q(estado='embalado')),
+            despachadas=Count('id', filter=Q(estado='despachado')),
             urgentes=Count('id', filter=Q(
                 urgente=True,
-                estado__in=['pendiente', 'en_despacho', 'embalado']
+                estado='pendiente'
             ))
         )
         
@@ -176,6 +177,7 @@ def dashboard(request):
             'solicitudes_pendientes': stats['pendientes'],
             'solicitudes_en_despacho': stats['en_despacho'],
             'solicitudes_embaladas': stats['embaladas'],
+            'solicitudes_despachadas': stats['despachadas'],
             'solicitudes_urgentes': stats['urgentes'],
             'solicitudes_recientes': Solicitud.objects.select_related('solicitante')[:10],
             
@@ -487,72 +489,83 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
                     return sucursal_norm
         return None
     
-    # Estadísticas de operaciones por cliente (sin agrupar)
-    # OPTIMIZADO: Usar solicitudes_list en memoria (no query adicional)
-    # IMPORTANTE: Agrupar primero por cliente (como hace la versión actual)
-    operaciones_por_cliente = defaultdict(int)
+    # Estadísticas de operaciones por categoría (sucursal, Camión PESCO, u OTROS)
+    # Camión PESCO: transporte propio - se separa de OTROS para visibilidad en reporte
     operaciones_sucursales = defaultdict(int)
+    operaciones_camion_pesco = 0
+    operaciones_otros = []
+    operaciones_otros_por_cliente = defaultdict(int)
     
-    # Contar operaciones por cliente desde solicitudes_list (ya en memoria)
     for solicitud in solicitudes_list:
         cliente = solicitud.cliente
-        operaciones_por_cliente[cliente] += 1
+        transporte = (solicitud.transporte or '').strip().upper()
+        
+        if transporte == 'PESCO':
+            operaciones_camion_pesco += 1
+        elif normalizar_cliente(cliente):
+            sucursal_norm = normalizar_cliente(cliente)
+            operaciones_sucursales[sucursal_norm] += 1
+        else:
+            operaciones_otros_por_cliente[cliente] += 1
     
     total_operaciones = len(solicitudes_list)
     
-    # Agrupar por sucursales y OTROS
-    operaciones_otros = []
+    for cliente, operaciones in operaciones_otros_por_cliente.items():
+        porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
+        operaciones_otros.append({
+            'cliente': cliente,
+            'operaciones': operaciones,
+            'porcentaje': round(porcentaje, 2)
+        })
     
-    for cliente, operaciones in operaciones_por_cliente.items():
-        sucursal_norm = normalizar_cliente(cliente)
-        
-        if sucursal_norm:
-            operaciones_sucursales[sucursal_norm] += operaciones
-        else:
-            porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
-            operaciones_otros.append({
-                'cliente': cliente,
-                'operaciones': operaciones,
-                'porcentaje': round(porcentaje, 2)
-            })
-    
-    # Crear lista de porcentajes agrupados (sucursales + OTROS)
+    # Crear lista de porcentajes agrupados (sucursales + Camión PESCO + OTROS)
     porcentajes_operaciones = []
     total_otros = sum(item['operaciones'] for item in operaciones_otros)
     
-    # Orden fijo de sucursales para los gráficos
+    # Orden fijo para los gráficos (sucursales + Camión PESCO + OTROS)
     ORDEN_SUCURSALES = [
         'SUC ANTOFAGASTA',
         'SUC CALAMA',
         'SUC PTO MONTT',
-        'SUC LOS ANGELES'
+        'SUC LOS ANGELES',
+        'Camión PESCO',  # Transporte propio - separado de OTROS
+        'OTROS'
     ]
     
     # Usar un set para evitar duplicados
-    sucursales_agregadas = set()
+    categorias_agregadas = set()
     
     # Agregar sucursales en el orden especificado
-    for sucursal in ORDEN_SUCURSALES:
-        if sucursal in operaciones_sucursales and sucursal not in sucursales_agregadas:
-            operaciones = operaciones_sucursales[sucursal]
-            porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
+    for sucursal in ['SUC ANTOFAGASTA', 'SUC CALAMA', 'SUC PTO MONTT', 'SUC LOS ANGELES']:
+        if sucursal in operaciones_sucursales and sucursal not in categorias_agregadas:
+            ops = operaciones_sucursales[sucursal]
+            porcentaje = (ops / total_operaciones * 100) if total_operaciones > 0 else 0
             porcentajes_operaciones.append({
                 'cliente': sucursal,
-                'operaciones': operaciones,
+                'operaciones': ops,
                 'porcentaje': round(porcentaje, 2)
             })
-            sucursales_agregadas.add(sucursal)
+            categorias_agregadas.add(sucursal)
     
-    # Agregar cualquier otra sucursal no contemplada en el orden (por si acaso)
-    for sucursal, operaciones in sorted(operaciones_sucursales.items(), key=lambda x: x[1], reverse=True):
-        if sucursal not in ORDEN_SUCURSALES and sucursal not in sucursales_agregadas:
-            porcentaje = (operaciones / total_operaciones * 100) if total_operaciones > 0 else 0
+    # Agregar cualquier otra sucursal no contemplada (por si acaso)
+    for sucursal, ops in sorted(operaciones_sucursales.items(), key=lambda x: x[1], reverse=True):
+        if sucursal not in categorias_agregadas:
+            porcentaje = (ops / total_operaciones * 100) if total_operaciones > 0 else 0
             porcentajes_operaciones.append({
                 'cliente': sucursal,
-                'operaciones': operaciones,
+                'operaciones': ops,
                 'porcentaje': round(porcentaje, 2)
             })
-            sucursales_agregadas.add(sucursal)
+            categorias_agregadas.add(sucursal)
+    
+    # Agregar Camión PESCO (transporte propio)
+    if operaciones_camion_pesco > 0:
+        porcentaje = (operaciones_camion_pesco / total_operaciones * 100) if total_operaciones > 0 else 0
+        porcentajes_operaciones.append({
+            'cliente': 'Camión PESCO',
+            'operaciones': operaciones_camion_pesco,
+            'porcentaje': round(porcentaje, 2)
+        })
     
     # Agregar OTROS al final
     if total_otros > 0:
@@ -563,27 +576,20 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'porcentaje': round(porcentaje_otros, 2)
         })
     
-    # Estadísticas de kilos volumétricos por cliente
-    # CORRECCIÓN: Agrupar primero por SOLICITUD (sumar todos los bultos de cada solicitud),
-    # luego agrupar por cliente usando el mapa de sucursales
-    # OPTIMIZADO: Usar solicitudes_list en memoria (los bultos ya están precargados)
-    
-    # Primero: Agrupar kilos por SOLICITUD (sumar todos los bultos de cada solicitud)
-    solicitudes_con_kilos = {}
+    # Estadísticas de kilos volumétricos por categoría (sucursal, Camión PESCO, u OTROS)
+    # Camión PESCO: transporte propio - se separa de OTROS para visibilidad en reporte
+    kilos_por_cliente = defaultdict(lambda: Decimal('0.00'))
+    kilos_camion_pesco = Decimal('0.00')
+    kilos_otros_detalle = defaultdict(lambda: Decimal('0.00'))
     clientes_sin_medidas = set()
     clientes_otros_sin_medidas = set()
     
-    # IMPORTANTE: Incluir TODAS las solicitudes despachadas, incluso si no tienen bultos o los bultos no tienen peso
-    # Esto asegura que los porcentajes sumen 100%
-    
-    # Calcular kilos por solicitud usando solicitudes_list (bultos ya precargados en memoria)
     for solicitud in solicitudes_list:
         cliente = solicitud.cliente
+        transporte = (solicitud.transporte or '').strip().upper()
         kilos_solicitud = Decimal('0.00')
         
-        # Los bultos ya están en memoria (prefetch_related), no necesitamos query adicional
         for bulto in solicitud.bultos.all():
-            # Calcular peso volumétrico
             if bulto.largo_cm and bulto.ancho_cm and bulto.alto_cm and \
                bulto.largo_cm > 0 and bulto.ancho_cm > 0 and bulto.alto_cm > 0:
                 volumen_cm3 = bulto.largo_cm * bulto.ancho_cm * bulto.alto_cm
@@ -595,30 +601,16 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             
             kilos_solicitud += peso_cobrable
         
-        # Agregar a solicitudes_con_kilos (incluso si tiene 0 kilos)
-        if cliente not in solicitudes_con_kilos:
-            solicitudes_con_kilos[cliente] = Decimal('0.00')
-        solicitudes_con_kilos[cliente] += kilos_solicitud
-    
-    # Segundo: Agrupar por sucursal usando el mapa (clientes ya agrupados por solicitud)
-    kilos_por_cliente = defaultdict(lambda: Decimal('0.00'))
-    kilos_otros_detalle = defaultdict(lambda: Decimal('0.00'))
-    
-    for cliente, kilos_total in solicitudes_con_kilos.items():
-        # Agrupar por sucursal normalizada
-        sucursal_norm = normalizar_cliente(cliente)
-        
-        if sucursal_norm:
-            # Es una sucursal
-            kilos_por_cliente[sucursal_norm] += kilos_total
+        if transporte == 'PESCO':
+            kilos_camion_pesco += kilos_solicitud
+        elif normalizar_cliente(cliente):
+            sucursal_norm = normalizar_cliente(cliente)
+            kilos_por_cliente[sucursal_norm] += kilos_solicitud
         else:
-            # Es un cliente OTROS
-            kilos_otros_detalle[cliente] += kilos_total
+            kilos_otros_detalle[cliente] += kilos_solicitud
     
-    # Calcular total de kilos y porcentajes agrupados
-    # IMPORTANTE: total_kilos debe incluir TODAS las solicitudes (incluso con 0 kilos)
-    # para que los porcentajes sumen 100%
-    total_kilos = sum(kilos_por_cliente.values()) + sum(kilos_otros_detalle.values())
+    # Calcular total de kilos (sucursales + Camión PESCO + OTROS)
+    total_kilos = sum(kilos_por_cliente.values()) + kilos_camion_pesco + sum(kilos_otros_detalle.values())
     
     # Si total_kilos es 0, significa que no hay kilos en ninguna solicitud
     # En ese caso, todos los porcentajes serán 0% pero las solicitudes se contarán igual
@@ -650,6 +642,15 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
                 'porcentaje': round(porcentaje, 2)
             })
             sucursales_kilos_agregadas.add(sucursal)
+    
+    # Agregar Camión PESCO (transporte propio)
+    if kilos_camion_pesco > 0:
+        porcentaje = (float(kilos_camion_pesco) / float(total_kilos) * 100) if total_kilos > 0 else 0
+        porcentajes_kilos.append({
+            'cliente': 'Camión PESCO',
+            'kilos_volumetricos': float(kilos_camion_pesco),
+            'porcentaje': round(porcentaje, 2)
+        })
     
     # Agregar OTROS (suma de todos los clientes no sucursales)
     # IMPORTANTE: Incluir OTROS incluso si tiene 0 kilos, para que los porcentajes sumen 100%
@@ -955,6 +956,9 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         list(Solicitud.objects.exclude(transporte='').values_list('transporte', flat=True))
     ))
     transportes_disponibles = [t for t in transportes_disponibles if t]  # Filtrar vacíos
+    # Siempre incluir PESCO (Camión PESCO) en el filtro por ser transporte clave de la operación
+    if 'PESCO' not in transportes_disponibles:
+        transportes_disponibles.append('PESCO')
     transportes_disponibles.sort()
     
     # Convertir a JSON para evitar problemas de renderizado en el template

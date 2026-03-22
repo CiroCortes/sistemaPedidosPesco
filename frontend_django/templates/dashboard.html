@@ -79,6 +79,22 @@
         </div>
         
         <div class="col-md-3">
+            <div class="card card-kpi border-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Despachadas</h6>
+                            <h2 class="mb-0 text-success">{{ solicitudes_despachadas }}</h2>
+                        </div>
+                        <div class="fs-1 text-success">
+                            <i class="bi bi-check-circle"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
             <div class="card card-kpi border-danger">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
@@ -180,9 +196,10 @@
             <div class="d-flex gap-2">
                 <!-- Filtro de Período -->
                 <select id="filtroPeriodo" class="form-select form-select-sm" style="width: auto;">
-                    <option value="30" {% if periodo_actual == 30 %}selected{% endif %}>Últimos 30 días</option>
                     <option value="7" {% if periodo_actual == 7 %}selected{% endif %}>Últimos 7 días</option>
+                    <option value="30" {% if periodo_actual == 30 %}selected{% endif %}>Últimos 30 días</option>
                     <option value="60" {% if periodo_actual == 60 %}selected{% endif %}>Últimos 60 días</option>
+                    <option value="90" {% if periodo_actual == 90 %}selected{% endif %}>Últimos 90 días</option>
                 </select>
                 <!-- Filtro de Transporte -->
                 <select id="filtroTransporte" class="form-select form-select-sm" style="width: auto;">
@@ -482,6 +499,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'SUC ANTOFAGASTA': 'rgba(0, 123, 255, 0.8)',     // Azul
             'SUC PTO MONTT': 'rgba(220, 53, 69, 0.8)',       // Rojo
             'SUC LOS ANGELES': 'rgba(255, 193, 7, 0.8)',     // Amarillo
+            'Camión PESCO': 'rgba(0, 180, 216, 0.8)',        // Turquesa PESCO
             'OTROS': 'rgba(108, 117, 125, 0.8)',             // Gris oscuro
             'Sin valor USD (RRHH, internos, etc.)': 'rgba(255, 99, 132, 0.8)',  // Rosa
             'DEFAULT': 'rgba(153, 102, 255, 0.8)'            // Púrpura - para categorías no mapeadas
