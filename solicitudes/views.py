@@ -63,6 +63,7 @@ def lista_solicitudes(request):
     estado = (request.GET.get('estado', '') or '').strip()
     tipo = request.GET.get('tipo', '')
     urgente = request.GET.get('urgente', '')
+    transporte = request.GET.get('transporte', '')
     busqueda = request.GET.get('q', '')
 
     if estado:
@@ -71,6 +72,8 @@ def lista_solicitudes(request):
         solicitudes = solicitudes.filter(tipo=tipo)
     if urgente == '1':
         solicitudes = solicitudes.filter(urgente=True)
+    if transporte:
+        solicitudes = solicitudes.filter(transporte=transporte)
     if busqueda:
         solicitudes = solicitudes.filter(
             Q(cliente__icontains=busqueda)
@@ -90,7 +93,7 @@ def lista_solicitudes(request):
             # Solo prefetch de bultos (el template no usa detalles en la lista)
             Prefetch('bultos', queryset=Bulto.objects.only('id', 'codigo'))
         )
-        .order_by('-id')
+        .order_by('id')  # Orden ascendente: más antiguas primero
     )
     
     # PASO 5: Paginar (esto ejecuta la query pero Django solo trae 25 registros)
@@ -108,11 +111,13 @@ def lista_solicitudes(request):
         'estado': estado,
         'tipo': tipo,
         'urgente': urgente,
+        'transporte': transporte,
         'busqueda': busqueda,
         'stats': stats,
         'es_admin': user.es_admin(),
         'tipos': [(t.codigo, t.nombre) for t in TipoSolicitud.activos()] if TipoSolicitud.activos().exists() else Solicitud.TIPOS,
         'estados_config': estados_opciones,
+        'transportes_config': TransporteConfig.activos(),
     }
     return render(request, 'solicitudes/lista.html', context)
 

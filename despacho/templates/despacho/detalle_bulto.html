@@ -25,7 +25,7 @@
 </div>
 
 <div class="row">
-    <div class="col-lg-6">
+    <div class="col-lg-{% if user.es_admin %}6{% else %}12{% endif %}">
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-light"><strong>Información del bulto</strong></div>
             <div class="card-body">
@@ -61,6 +61,7 @@
             </div>
         </div>
     </div>
+    {% if user.es_admin %}
     <div class="col-lg-6">
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-light"><strong>Actualizar estado</strong></div>
@@ -114,6 +115,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <div class="card shadow-sm">
@@ -162,6 +164,7 @@
     const btnEstado = document.getElementById('btnEstado');
     const estadoErrors = document.getElementById('estadoErrors');
 
+    if (formEstado) {
     formEstado.addEventListener('submit', function (event) {
         event.preventDefault();
         spinnerEstado.classList.remove('d-none');
@@ -195,6 +198,7 @@
                 btnEstado.disabled = false;
             });
     });
+    }
 
     // Función para generar e imprimir etiqueta de bulto
     function generarEtiquetaBulto() {

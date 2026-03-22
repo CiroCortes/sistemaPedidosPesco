@@ -55,6 +55,18 @@
             </ul>
         </div>
         {% endif %}
+        {% if request.user.es_admin or request.user.es_bodega %}
+        <a href="{% url 'bodega:gestion_pedidos' %}?solicitud={{ solicitud.id }}" class="btn btn-outline-primary">
+            <i class="bi bi-box-seam me-2"></i>Gestión de pedidos
+        </a>
+        {% endif %}
+        {% if request.user.es_admin or request.user.es_despacho %}
+        {% if solicitud.estado == 'en_despacho' or solicitud.estado == 'embalado' or solicitud.estado == 'listo_despacho' or solicitud.estado == 'en_ruta' %}
+        <a href="{% url 'despacho:gestion' %}?solicitud={{ solicitud.id }}" class="btn btn-outline-primary">
+            <i class="bi bi-truck me-2"></i>Gestión de despacho
+        </a>
+        {% endif %}
+        {% endif %}
         <a href="{% url 'solicitudes:lista' %}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-2"></i>Volver
         </a>

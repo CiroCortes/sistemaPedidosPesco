@@ -171,6 +171,7 @@ def gestion_pedidos(request):
     user = request.user
     q = request.GET.get('q', '')
     bodega_filtro = request.GET.get('bodega', '')
+    solicitud_filtro = request.GET.get('solicitud', '')
 
     detalles_qs = (
         SolicitudDetalle.objects
@@ -205,6 +206,13 @@ def gestion_pedidos(request):
         .distinct()
         .order_by('fecha_solicitud', 'id')
     )
+
+    if solicitud_filtro:
+        try:
+            sid = int(solicitud_filtro)
+            solicitudes_qs = solicitudes_qs.filter(pk=sid)
+        except (ValueError, TypeError):
+            pass
 
     prefetch = Prefetch('detalles', queryset=detalles_qs, to_attr='detalles_visibles')
 
@@ -278,6 +286,7 @@ def gestion_pedidos(request):
         'solicitudes': solicitudes,
         'busqueda': q,
         'bodega_filtro': bodega_filtro,
+        'solicitud_filtro': solicitud_filtro,
         'bodegas_disponibles': bodegas_disponibles,
         'transferencia_form': TransferenciaForm(),
     }

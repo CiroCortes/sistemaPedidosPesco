@@ -1,12 +1,14 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from core.decorators import role_required
 from .services import StockService
 from .models import CargaStock, StockSAP
 from django.db.models import Sum, Count
 
 
 @login_required
+@role_required(['admin'])
 def cargar_stock(request):
     """Vista para cargar archivo de stock"""
     

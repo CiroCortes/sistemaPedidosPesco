@@ -1058,8 +1058,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         <th>ID</th>
                         <th>Fecha</th>
                         <th>Cliente</th>
-                        <th>Código</th>
-                        <th>Cantidad</th>
+                        <th>N° PC/OF/ST</th>
+                        <th>Códigos</th>
                         <th>Estado</th>
                         <th>Urgente</th>
                         <th>Acciones</th>
@@ -1071,8 +1071,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td><strong>#{{ solicitud.id }}</strong></td>
                         <td>{{ solicitud.fecha_solicitud|date:"d/m/Y" }}</td>
                         <td>{{ solicitud.cliente }}</td>
-                        <td><code>{{ solicitud.codigo }}</code></td>
-                        <td>{{ solicitud.cantidad_solicitada }}</td>
+                        <td>
+                            {% if solicitud.tipo == 'ST' and solicitud.numero_st %}
+                                {{ solicitud.numero_st }}
+                            {% elif solicitud.numero_pedido %}
+                                {{ solicitud.numero_pedido }}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ solicitud.total_codigos }}</td>
                         <td>
                             <span class="badge bg-{{ solicitud.color_estado }}">
                                 <i class="bi bi-{{ solicitud.icono_estado }} me-1"></i>
@@ -1089,9 +1097,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             {% endif %}
                         </td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" title="Ver detalles">
+                            <a href="{% url 'solicitudes:detalle' solicitud.id %}" class="btn btn-sm btn-outline-primary" title="Ver detalles">
                                 <i class="bi bi-eye"></i>
-                            </button>
+                            </a>
                         </td>
                     </tr>
                     {% endfor %}

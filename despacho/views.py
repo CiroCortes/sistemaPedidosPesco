@@ -26,6 +26,7 @@ def gestion_despacho(request):
     q = request.GET.get('q', '')
     transporte = request.GET.get('transporte', '')
     estado_filtro = request.GET.get('estado', 'pendientes')
+    solicitud_filtro = request.GET.get('solicitud', '')
 
     estados_pendientes = ['en_despacho', 'embalado', 'listo_despacho']
     estados_todos = ['en_despacho', 'embalado', 'listo_despacho', 'en_ruta', 'despachado']
@@ -59,6 +60,13 @@ def gestion_despacho(request):
 
     if transporte:
         solicitudes = solicitudes.filter(transporte=transporte)
+
+    if solicitud_filtro:
+        try:
+            sid = int(solicitud_filtro)
+            solicitudes = solicitudes.filter(pk=sid)
+        except (ValueError, TypeError):
+            pass
 
     form = BultoForm()
 
@@ -121,6 +129,7 @@ def gestion_despacho(request):
         'solicitudes': solicitudes,
         'estado_filtro': estado_filtro,
         'transporte': transporte,
+        'solicitud_filtro': solicitud_filtro,
         'busqueda': q,
         'form': form,
         'transportes': transportes,
@@ -189,14 +198,19 @@ def crear_bulto(request):
     solicitud_unica = detalles[0].solicitud
 
     if form.is_valid():
+        es_despachador = request.user.es_despacho()
         with transaction.atomic():
             bulto = form.save(commit=False)
             bulto.creado_por = request.user
-            bulto.estado = 'embalado'
+            # Solo despachador: bulto y solicitud pasan directo a listo_despacho.
+            # Admin: bulto queda embalado (puede actualizar estado después).
+            if es_despachador:
+                bulto.estado = 'listo_despacho'
+            else:
+                bulto.estado = 'embalado'
             # Asignar la solicitud ANTES de guardar (campo obligatorio NOT NULL)
             bulto.solicitud = solicitud_unica
             # Establecer fecha_embalaje automáticamente al crear el bulto
-            # fecha_embalaje es la fecha real del proceso (fecha_creacion no afecta el KPI)
             if not bulto.fecha_embalaje:
                 bulto.fecha_embalaje = timezone.now()
             bulto.save()
@@ -212,7 +226,11 @@ def crear_bulto(request):
                 solicitud_unica.save(update_fields=['estado'])
 
             mensaje = f'Bulto {bulto.codigo} creado con {len(detalles)} códigos.'
+            if es_despachador:
+                mensaje += ' Estado: Listo para despacho.'
             messages.success(request, mensaje)
+            # Todos van al detalle del bulto (ver info e imprimir etiqueta).
+            # Solo admin ve el formulario "Actualizar estado" en esa página.
             return redirect('despacho:detalle_bulto', pk=bulto.pk)
     else:
         messages.error(request, 'Debes completar los datos del bulto.')
@@ -262,6 +280,13 @@ def actualizar_estado_bulto(request, pk):
     bulto = get_object_or_404(Bulto, pk=pk)
     if request.method != 'POST':
         return JsonResponse({'success': False, 'message': 'Método no permitido'}, status=405)
+
+    # Solo el admin puede actualizar el estado del bulto (el despachador no ve esta opción)
+    if not request.user.es_admin():
+        return JsonResponse({
+            'success': False,
+            'message': 'Solo el administrador puede actualizar el estado de los bultos.'
+        }, status=403)
 
     # Validar que solo admin puede marcar bultos como 'finalizado' manualmente
     nuevo_estado = request.POST.get('estado')

@@ -209,7 +209,8 @@ def dashboard(request):
                 .filter(estado='pendiente')
                 .annotate(tiene_pendientes=Exists(detalles_pendientes))
                 .filter(tiene_pendientes=True)
-                .select_related('solicitante')[:15]
+                .select_related('solicitante')
+                .order_by('fecha_solicitud', 'hora_solicitud')[:15]
             )
         else:
             # Si no tiene bodegas asignadas, no ver nada
@@ -228,7 +229,8 @@ def dashboard(request):
         solicitudes_en_despacho = list(
             Solicitud.objects
             .filter(estado='en_despacho')
-            .select_related('solicitante')[:15]
+            .select_related('solicitante')
+            .order_by('fecha_solicitud', 'hora_solicitud')[:15]
         )
         
         urgentes = sum(1 for s in solicitudes_en_despacho if s.urgente)
@@ -313,7 +315,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # ============================================================================
     
     # Constantes para bodegas del dashboard
-    BODEGAS_DASHBOARD = ['013-03', '013-01', '013-PP', '013-PS', '013-09']
+    BODEGAS_DASHBOARD = ['013-01', '013-03', '013-05', '013-08', '013-09', '013-PP', '013-PS']
     
     # Base queryset para solicitudes del período
     # Solo considerar solicitudes DESPACHADAS (trabajo completado)
@@ -358,29 +360,28 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     
     detalles_bodegas_list = list(detalles_bodegas)
     
-    # CONSULTA 3: Bultos en despacho (para Solicitudes en Despacho)
+    # CONSULTA 3: Solicitudes listas para despacho (para Solicitudes en Despacho)
     # IMPORTANTE: Este indicador es diferente a los otros KPIs
     # - Los otros KPIs trabajan con solicitudes DESPACHADAS (completadas)
-    # - Este indicador mide bultos PENDIENTES (listo_despacho, aún no despachados)
-    # Los bultos "listo_despacho" pertenecen a solicitudes EN PROCESO (no despachadas)
-    # Si la solicitud está 'despachado', los bultos ya están 'finalizado', no 'listo_despacho'
-    bultos_en_despacho = Bulto.objects.filter(
+    # - Este indicador mide SOLICITUDES PENDIENTES (listo_despacho, aún no despachadas)
+    # Una solicitud está lista cuando tiene estado 'listo_despacho'
+    # Usamos fecha_preparacion de los detalles cuando pasan a bodega 013
+    solicitudes_listas = Solicitud.objects.filter(
         estado='listo_despacho',
-        fecha_envio__isnull=True,
-        fecha_embalaje__isnull=False,
-        solicitud__created_at__gte=fecha_inicio
-        # NO incluir: solicitud__estado='despachado' 
-        # (los bultos listo_despacho pertenecen a solicitudes activas/pendientes)
-    ).select_related('solicitud').prefetch_related('detalles')
+        created_at__gte=fecha_inicio
+    ).select_related('solicitante').prefetch_related(
+        'bultos',
+        'detalles'
+    )
     
     if transporte_filtro:
-        bultos_en_despacho = bultos_en_despacho.filter(
-            Q(transportista=transporte_filtro) | 
-            Q(transportista_extra=transporte_filtro) |
-            Q(solicitud__transporte=transporte_filtro)
-        )
+        solicitudes_listas = solicitudes_listas.filter(
+            Q(transporte=transporte_filtro) |
+            Q(bultos__transportista=transporte_filtro) |
+            Q(bultos__transportista_extra=transporte_filtro)
+        ).distinct()
     
-    bultos_despacho_list = list(bultos_en_despacho)
+    solicitudes_listas_list = list(solicitudes_listas)
     
     # ============================================================================
     # PROCESAMIENTO EN PYTHON (sin queries adicionales)
@@ -834,21 +835,16 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # ============================================================================
     # SOLICITUDES EN DESPACHO POR TRANSPORTE (Horas Laborales + Días)
     # ============================================================================
+    # IMPORTANTE: Usa fecha_preparacion cuando el producto pasa a bodega 013
     
     # Agrupar por transporte y calcular métricas
     solicitudes_por_transporte = {}
     
-    # OPTIMIZADO: Usar bultos_despacho_list (ya precargados en consulta 3)
+    # OPTIMIZADO: Usar solicitudes_listas_list (ya precargados en consulta 3)
     # Primero, recopilar todos los códigos únicos para hacer batch query de precios
     todos_codigos = set()
-    detalles_por_bulto = {}
-    
-    for bulto in bultos_despacho_list:
-        # Los detalles ya están precargados (prefetch_related)
-        detalles = list(bulto.detalles.all())
-        
-        detalles_por_bulto[bulto.id] = (bulto, detalles)
-        for detalle in detalles:
+    for solicitud in solicitudes_listas_list:
+        for detalle in solicitud.detalles.all():
             todos_codigos.add(detalle.codigo)
     
     # Batch query para precios
@@ -856,15 +852,47 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     if todos_codigos:
         stocks = Stock.objects.filter(codigo__in=list(todos_codigos)).values('codigo', 'precio')
         for stock in stocks:
-            # Si hay múltiples stocks para el mismo código, tomar el primero con precio válido
             if stock['codigo'] not in precios_cache and stock.get('precio'):
                 precios_cache[stock['codigo']] = stock['precio']
     
-    # Ahora procesar los bultos con datos precargados
-    for bulto, detalles in detalles_por_bulto.values():
-        # Determinar transporte (prioridad: transportista_extra > transportista > solicitud.transporte)
-        transporte_slug = bulto.transportista_extra or bulto.transportista or bulto.solicitud.transporte or 'Sin transporte'
-        # Obtener nombre legible del transporte usando la configuración
+    # Procesar SOLICITUDES (no bultos)
+    for solicitud in solicitudes_listas_list:
+        # Determinar transporte (prioridad: bulto.transportista_extra > bulto.transportista > solicitud.transporte)
+        transporte_slug = 'Sin transporte'
+        fecha_preparacion_solicitud = None
+        
+        # Buscar la fecha_preparacion más reciente de los detalles
+        # (especialmente los que tienen bodega='013' o fueron transferidos a 013)
+        detalles_con_fecha = [
+            d for d in solicitud.detalles.all() 
+            if d.fecha_preparacion is not None
+        ]
+        
+        if detalles_con_fecha:
+            # Tomar la fecha_preparacion más reciente
+            detalle_mas_reciente = max(
+                detalles_con_fecha,
+                key=lambda d: d.fecha_preparacion
+            )
+            fecha_preparacion_solicitud = detalle_mas_reciente.fecha_preparacion
+        
+        # Determinar transporte desde bultos o solicitud
+        bultos_solicitud = list(solicitud.bultos.all())
+        if bultos_solicitud:
+            # Tomar el primer bulto con transporte definido
+            for bulto in bultos_solicitud:
+                transporte_slug = (
+                    bulto.transportista_extra or 
+                    bulto.transportista or 
+                    solicitud.transporte or 
+                    'Sin transporte'
+                )
+                if transporte_slug != 'Sin transporte':
+                    break
+        else:
+            transporte_slug = solicitud.transporte or 'Sin transporte'
+        
+        # Obtener nombre legible del transporte
         transporte = TransporteConfig.etiqueta(transporte_slug) if transporte_slug != 'Sin transporte' else 'Sin transporte'
         
         if transporte not in solicitudes_por_transporte:
@@ -875,21 +903,22 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
                 'valor_usd': Decimal('0.00')
             }
         
-        # Agregar la solicitud única (no por cada detalle)
-        solicitudes_por_transporte[transporte]['solicitudes'].add(bulto.solicitud.id)
+        # Agregar la solicitud única
+        solicitudes_por_transporte[transporte]['solicitudes'].add(solicitud.id)
         
-        # Calcular horas laborales y días calendario desde fecha_embalaje
-        if bulto.fecha_embalaje:
+        # Calcular horas laborales y días calendario desde fecha_preparacion
+        # (cuando el producto pasa a bodega 013)
+        if fecha_preparacion_solicitud:
             # Horas laborales (excluyendo fines de semana, 8h/día)
-            horas_lab = calcular_horas_laborales(bulto.fecha_embalaje, ahora)
+            horas_lab = calcular_horas_laborales(fecha_preparacion_solicitud, ahora)
             solicitudes_por_transporte[transporte]['horas_laborales'].append(horas_lab)
             
             # Días calendario (para referencia)
-            dias_cal = (ahora - bulto.fecha_embalaje).total_seconds() / 86400
+            dias_cal = (ahora - fecha_preparacion_solicitud).total_seconds() / 86400
             solicitudes_por_transporte[transporte]['dias_calendario'].append(dias_cal)
         
-        # Valorizar todos los detalles del bulto
-        for detalle in detalles:
+        # Valorizar todos los detalles de la solicitud
+        for detalle in solicitud.detalles.all():
             precio = precios_cache.get(detalle.codigo)
             if precio:
                 valor = Decimal(str(precio)) * detalle.cantidad
