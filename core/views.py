@@ -11,14 +11,46 @@ from django.db.models import Count, Q, Avg, Min, Max, Sum, F, ExpressionWrapper,
 from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 from django.core.cache import cache
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, date, time as dt_time
 from decimal import Decimal
 import json
-from solicitudes.models import Solicitud, SolicitudDetalle
+import zoneinfo
 from despacho.models import Bulto
 from bodega.models import Stock
+from solicitudes.models import Solicitud, SolicitudDetalle
 from .models import Usuario
 from configuracion.models import TransporteConfig
+
+_CHILE_TZ = zoneinfo.ZoneInfo('America/Santiago')
+
+
+def _es_transporte_retira_cliente(transporte_raw):
+    """True si el transporte de la solicitud es retiro en sucursal / Retira cliente (código RETIRA_CLIENTE)."""
+    t = (transporte_raw or '').strip().upper().replace(' ', '_')
+    return t == 'RETIRA_CLIENTE'
+
+
+def inicio_efectivo_lead_time(solicitud):
+    """
+    Inicio del reloj para lead time: max(fecha/hora negocio del pedido, created_at).
+    Evita inflar horas cuando fecha_solicitud y created_at no están alineados (cargas tardías,
+    Excel retroactivo o cierres masivos).
+    """
+    if not solicitud.fecha_solicitud:
+        return solicitud.created_at
+    hr = solicitud.hora_solicitud or dt_time(0, 0, 0)
+    inicio_negocio = datetime.combine(solicitud.fecha_solicitud, hr, tzinfo=_CHILE_TZ)
+    creado = solicitud.created_at
+    if creado is None:
+        return inicio_negocio
+    if timezone.is_naive(creado):
+        creado = timezone.make_aware(creado, _CHILE_TZ)
+    return max(inicio_negocio, creado)
+
+
+def _lead_horas_validas(delta_horas):
+    """Excluye solo deltas negativos (fechas incoherentes)."""
+    return delta_horas >= 0
 
 
 def calcular_horas_laborales(fecha_inicio, fecha_fin):
@@ -121,11 +153,6 @@ def dashboard(request):
     # Obtener fecha actual en zona horaria de Chile
     fecha_chile = timezone.localtime(timezone.now())
     
-    context = {
-        'user': user,
-        'hoy': fecha_chile.date(),
-    }
-    
     # Obtener parámetros de filtro
     periodo = request.GET.get('periodo', '30')  # Default: últimos 30 días
     try:
@@ -136,6 +163,16 @@ def dashboard(request):
     transporte_filtro = request.GET.get('transporte', None)
     if transporte_filtro == '':
         transporte_filtro = None
+
+    # Valores por defecto: el template usa `user.es_admin and indicadores` en varios sitios
+    # y Django evalúa ambos operandos sin cortocircuito; si faltan, falla para bodega/despacho.
+    context = {
+        'user': user,
+        'hoy': fecha_chile.date(),
+        'indicadores': None,
+        'periodo_actual': periodo_dias,
+        'transporte_filtro': transporte_filtro,
+    }
     
     if user.es_admin():
         # Admin ve todo - Optimizado: 1 query en lugar de 6
@@ -143,7 +180,9 @@ def dashboard(request):
             total=Count('id'),
             pendientes=Count('id', filter=Q(estado='pendiente')),
             en_despacho=Count('id', filter=Q(estado='en_despacho')),
-            embaladas=Count('id', filter=Q(estado='embalado')),
+            listo_despacho=Count('id', filter=Q(estado='listo_despacho')),
+            # embaladas: omitido de KPI; listo_despacho ya refleja pedido embalado/listo. Reactivar ambas líneas abajo si se quiere tarjeta propia.
+            # embaladas=Count('id', filter=Q(estado='embalado')),
             despachadas=Count('id', filter=Q(estado='despachado')),
             urgentes=Count('id', filter=Q(
                 urgente=True,
@@ -176,7 +215,8 @@ def dashboard(request):
             'total_solicitudes': stats['total'],
             'solicitudes_pendientes': stats['pendientes'],
             'solicitudes_en_despacho': stats['en_despacho'],
-            'solicitudes_embaladas': stats['embaladas'],
+            'solicitudes_listo_despacho': stats['listo_despacho'],
+            # 'solicitudes_embaladas': stats['embaladas'],  # descomentar junto con embaladas= en aggregate
             'solicitudes_despachadas': stats['despachadas'],
             'solicitudes_urgentes': stats['urgentes'],
             'solicitudes_recientes': Solicitud.objects.select_related('solicitante')[:10],
@@ -391,9 +431,8 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # ============================================================================
     
     # 1. LEAD TIME DE PREPARACIÓN
-    # Mide: Tiempo desde created_at de solicitud hasta MAX(fecha_preparacion) de todos sus detalles
-    # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por detalle
-    # Una solicitud se considera preparada cuando el último detalle termina de prepararse
+    # Mide: MAX(fecha_preparacion) de detalles − inicio_efectivo (max entre fecha/hora pedido y created_at)
+    # Contar por SOLICITUD (1 vez). Se excluyen deltas negativos (fechas incoherentes).
     
     lead_times_prep = []
     # Diccionario para agrupar lead times por semana (año + número de semana ISO)
@@ -408,12 +447,15 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             if d.fecha_preparacion
         ]
         
-        if fechas_prep and solicitud.created_at:
-            # Calcular MAX en Python (no query adicional)
+        if fechas_prep:
             fecha_prep_max = max(fechas_prep)
-            # Lead Time = fecha_preparacion más reciente - created_at
-            delta = fecha_prep_max - solicitud.created_at
+            inicio = inicio_efectivo_lead_time(solicitud)
+            if not inicio:
+                continue
+            delta = fecha_prep_max - inicio
             horas = delta.total_seconds() / 3600
+            if not _lead_horas_validas(horas):
+                continue
             lead_times_prep.append(horas)
             
             # Agrupar por SEMANA ISO (usar fecha de preparación como referencia)
@@ -489,10 +531,11 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
                     return sucursal_norm
         return None
     
-    # Estadísticas de operaciones por categoría (sucursal, Camión PESCO, u OTROS)
-    # Camión PESCO: transporte propio - se separa de OTROS para visibilidad en reporte
+    # Estadísticas de operaciones por categoría (sucursal, Camión PESCO, Retira cliente, u OTROS)
+    # Camión PESCO / Retira cliente: se separan de OTROS para visibilidad en las tortas del dashboard
     operaciones_sucursales = defaultdict(int)
     operaciones_camion_pesco = 0
+    operaciones_retira_cliente = 0
     operaciones_otros = []
     operaciones_otros_por_cliente = defaultdict(int)
     
@@ -502,6 +545,8 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         
         if transporte == 'PESCO':
             operaciones_camion_pesco += 1
+        elif _es_transporte_retira_cliente(solicitud.transporte):
+            operaciones_retira_cliente += 1
         elif normalizar_cliente(cliente):
             sucursal_norm = normalizar_cliente(cliente)
             operaciones_sucursales[sucursal_norm] += 1
@@ -529,6 +574,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         'SUC PTO MONTT',
         'SUC LOS ANGELES',
         'Camión PESCO',  # Transporte propio - separado de OTROS
+        'Retira cliente',
         'OTROS'
     ]
     
@@ -567,6 +613,14 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'porcentaje': round(porcentaje, 2)
         })
     
+    if operaciones_retira_cliente > 0:
+        porcentaje_rc = (operaciones_retira_cliente / total_operaciones * 100) if total_operaciones > 0 else 0
+        porcentajes_operaciones.append({
+            'cliente': 'Retira cliente',
+            'operaciones': operaciones_retira_cliente,
+            'porcentaje': round(porcentaje_rc, 2)
+        })
+    
     # Agregar OTROS al final
     if total_otros > 0:
         porcentaje_otros = (total_otros / total_operaciones * 100) if total_operaciones > 0 else 0
@@ -576,10 +630,10 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             'porcentaje': round(porcentaje_otros, 2)
         })
     
-    # Estadísticas de kilos volumétricos por categoría (sucursal, Camión PESCO, u OTROS)
-    # Camión PESCO: transporte propio - se separa de OTROS para visibilidad en reporte
+    # Estadísticas de kilos volumétricos por categoría (sucursal, Camión PESCO, Retira cliente, u OTROS)
     kilos_por_cliente = defaultdict(lambda: Decimal('0.00'))
     kilos_camion_pesco = Decimal('0.00')
+    kilos_retira_cliente = Decimal('0.00')
     kilos_otros_detalle = defaultdict(lambda: Decimal('0.00'))
     clientes_sin_medidas = set()
     clientes_otros_sin_medidas = set()
@@ -603,14 +657,21 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         
         if transporte == 'PESCO':
             kilos_camion_pesco += kilos_solicitud
+        elif _es_transporte_retira_cliente(solicitud.transporte):
+            kilos_retira_cliente += kilos_solicitud
         elif normalizar_cliente(cliente):
             sucursal_norm = normalizar_cliente(cliente)
             kilos_por_cliente[sucursal_norm] += kilos_solicitud
         else:
             kilos_otros_detalle[cliente] += kilos_solicitud
     
-    # Calcular total de kilos (sucursales + Camión PESCO + OTROS)
-    total_kilos = sum(kilos_por_cliente.values()) + kilos_camion_pesco + sum(kilos_otros_detalle.values())
+    # Calcular total de kilos (sucursales + Camión PESCO + Retira cliente + OTROS)
+    total_kilos = (
+        sum(kilos_por_cliente.values())
+        + kilos_camion_pesco
+        + kilos_retira_cliente
+        + sum(kilos_otros_detalle.values())
+    )
     
     # Si total_kilos es 0, significa que no hay kilos en ninguna solicitud
     # En ese caso, todos los porcentajes serán 0% pero las solicitudes se contarán igual
@@ -649,6 +710,14 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         porcentajes_kilos.append({
             'cliente': 'Camión PESCO',
             'kilos_volumetricos': float(kilos_camion_pesco),
+            'porcentaje': round(porcentaje, 2)
+        })
+    
+    if kilos_retira_cliente > 0:
+        porcentaje = (float(kilos_retira_cliente) / float(total_kilos) * 100) if total_kilos > 0 else 0
+        porcentajes_kilos.append({
+            'cliente': 'Retira cliente',
+            'kilos_volumetricos': float(kilos_retira_cliente),
             'porcentaje': round(porcentaje, 2)
         })
     
@@ -716,16 +785,13 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
                 if d.fecha_preparacion
             ]
             
-            # Calcular MAX en Python (no query adicional)
-            fecha_fin_preparacion = max(fechas_prep) if fechas_prep else solicitud.created_at
+            fecha_fin_preparacion = max(fechas_prep) if fechas_prep else inicio_efectivo_lead_time(solicitud)
             
             if fecha_fin_preparacion:
                 # Lead Time = fecha_embalaje (MAX) - fecha_fin_preparacion (MAX)
-                # Mide el tiempo desde que terminó la preparación hasta que se embaló el último bulto
                 delta = fecha_emb_max - fecha_fin_preparacion
                 horas = delta.total_seconds() / 3600
-                # Solo agregar si el lead time es positivo
-                if horas >= 0:
+                if horas >= 0 and _lead_horas_validas(horas):
                     lead_times_emb.append(horas)
     
     lt_emb_promedio = sum(lead_times_emb) / len(lead_times_emb) if lead_times_emb else 0
@@ -733,7 +799,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     lt_emb_max = max(lead_times_emb) if lead_times_emb else 0
     
     # 3. LEAD TIME TOTAL (SOLICITUD COMPLETA)
-    # Mide: Desde created_at de solicitud hasta MAX(fecha_envio/fecha_entrega) cuando todos los bultos están finalizados
+    # Mide: Desde inicio_efectivo hasta MAX(fecha_envio/fecha_entrega) con bultos finalizados
     # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por bulto
     # Solo usamos solicitudes con bultos finalizados porque cuando la solicitud pasa a 'despachado',
     # todos sus bultos se finalizan automáticamente
@@ -747,9 +813,10 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             if b.estado == 'finalizado' and b.fecha_envio
         ]
         
-        if bultos_final and solicitud.created_at:
-            # Obtener la fecha más reciente entre fecha_envio y fecha_entrega
-            # fecha_envio se establece cuando el admin finaliza el bulto al marcar solicitud como despachada
+        if bultos_final:
+            inicio = inicio_efectivo_lead_time(solicitud)
+            if not inicio:
+                continue
             fechas_fin = []
             for bulto in bultos_final:
                 fecha_fin = bulto.fecha_envio or bulto.fecha_entrega
@@ -757,11 +824,11 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
                     fechas_fin.append(fecha_fin)
             
             if fechas_fin:
-                # Calcular MAX en Python (no query adicional)
                 fecha_fin_max = max(fechas_fin)
-                # Lead Time Total = fecha_fin (MAX) - created_at
-                delta = fecha_fin_max - solicitud.created_at
-                lead_times_total.append(delta.total_seconds() / 3600)  # En horas
+                delta = fecha_fin_max - inicio
+                horas = delta.total_seconds() / 3600
+                if _lead_horas_validas(horas):
+                    lead_times_total.append(horas)
     
     lt_total_promedio = sum(lead_times_total) / len(lead_times_total) if lead_times_total else 0
     lt_total_min = min(lead_times_total) if lead_times_total else 0
@@ -794,13 +861,15 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         if not bodega_codigo or bodega_codigo not in BODEGAS_DASHBOARD:
             continue
         
-        # Calcular lead time: desde created_at de solicitud hasta fecha_preparacion del detalle
-        # La solicitud ya está precargada (select_related)
-        if detalle.fecha_preparacion and detalle.solicitud.created_at:
-            delta = detalle.fecha_preparacion - detalle.solicitud.created_at
-            horas = delta.total_seconds() / 3600
-            lead_times_por_bodega[bodega_codigo]['lead_times_horas'].append(horas)
-            lead_times_por_bodega[bodega_codigo]['cantidad_operaciones'] += 1
+        if detalle.fecha_preparacion:
+            sol = detalle.solicitud
+            inicio = inicio_efectivo_lead_time(sol)
+            if inicio:
+                delta = detalle.fecha_preparacion - inicio
+                horas = delta.total_seconds() / 3600
+                if _lead_horas_validas(horas):
+                    lead_times_por_bodega[bodega_codigo]['lead_times_horas'].append(horas)
+                    lead_times_por_bodega[bodega_codigo]['cantidad_operaciones'] += 1
     
     # Formatear datos de lead time por bodega - INCLUIR TODAS
     lead_time_bodegas = []
