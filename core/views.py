@@ -7,6 +7,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.http import JsonResponse
 from django.db.models import Count, Q, Avg, Min, Max, Sum, F, ExpressionWrapper, DurationField, OuterRef, Subquery, Case, When, DecimalField
 from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
@@ -359,11 +360,12 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # Constantes para bodegas del dashboard
     BODEGAS_DASHBOARD = ['013-01', '013-03', '013-05', '013-08', '013-09', '013-PP', '013-PS']
     
-    # Base queryset para solicitudes del período
-    # Solo considerar solicitudes DESPACHADAS (trabajo completado)
+    # Base queryset para solicitudes del período.
+    # Filtramos por fecha_despachado para capturar solicitudes antiguas despachadas
+    # dentro del período, independientemente de cuándo fueron creadas.
     solicitudes_base = Solicitud.objects.filter(
-        created_at__gte=fecha_inicio,
-        estado='despachado'  # Solo solicitudes despachadas
+        fecha_despachado__gte=fecha_inicio,
+        estado='despachado'
     )
     
     # Aplicar filtro de transporte si existe
@@ -387,7 +389,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # CONSULTA 2: Detalles por bodega (para Lead Time Bodegas)
     
     detalles_bodegas = SolicitudDetalle.objects.filter(
-        solicitud__created_at__gte=fecha_inicio,
+        solicitud__fecha_despachado__gte=fecha_inicio,
         solicitud__estado='despachado',
         fecha_preparacion__isnull=False,
         bodega__in=BODEGAS_DASHBOARD
@@ -431,47 +433,36 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # ============================================================================
     
     # 1. LEAD TIME DE PREPARACIÓN
-    # Mide: MAX(fecha_preparacion) de detalles − inicio_efectivo (max entre fecha/hora pedido y created_at)
-    # Contar por SOLICITUD (1 vez). Se excluyen deltas negativos (fechas incoherentes).
+    # Mide: fecha_en_despacho (momento en que el admin movió a "en_despacho") − inicio_efectivo
+    # Semántica: cuánto tardó la solicitud en pasar de creada a lista para embalar.
     
     lead_times_prep = []
-    # Diccionario para agrupar lead times por semana (año + número de semana ISO)
     lead_times_por_semana = {}
-    
-    # PROCESAMIENTO EN PYTHON: Los detalles ya están en memoria (prefetch_related)
+
     for solicitud in solicitudes_list:
-        # Los detalles ya están en memoria, no necesitamos query adicional
-        fechas_prep = [
-            d.fecha_preparacion 
-            for d in solicitud.detalles.all() 
-            if d.fecha_preparacion
-        ]
-        
-        if fechas_prep:
-            fecha_prep_max = max(fechas_prep)
-            inicio = inicio_efectivo_lead_time(solicitud)
-            if not inicio:
-                continue
-            delta = fecha_prep_max - inicio
-            horas = delta.total_seconds() / 3600
-            if not _lead_horas_validas(horas):
-                continue
-            lead_times_prep.append(horas)
-            
-            # Agrupar por SEMANA ISO (usar fecha de preparación como referencia)
-            fecha_prep = fecha_prep_max.date()
-            iso_year, iso_week, iso_day = fecha_prep.isocalendar()
-            
-            # Clave única por semana: "2026-W02" (año-semana)
-            semana_key = f"{iso_year}-W{iso_week:02d}"
-            
-            if semana_key not in lead_times_por_semana:
-                lead_times_por_semana[semana_key] = {
-                    'valores': [],
-                    'iso_year': iso_year,
-                    'iso_week': iso_week,
-                }
-            lead_times_por_semana[semana_key]['valores'].append(horas)
+        fecha_fin_prep = solicitud.fecha_en_despacho
+        if not fecha_fin_prep:
+            continue
+        inicio = inicio_efectivo_lead_time(solicitud)
+        if not inicio:
+            continue
+        delta = fecha_fin_prep - inicio
+        horas = delta.total_seconds() / 3600
+        if not _lead_horas_validas(horas):
+            continue
+        lead_times_prep.append(horas)
+
+        # Agrupar por SEMANA ISO (referencia: fecha en que entró a despacho)
+        fecha_ref = fecha_fin_prep.date()
+        iso_year, iso_week, _ = fecha_ref.isocalendar()
+        semana_key = f"{iso_year}-W{iso_week:02d}"
+        if semana_key not in lead_times_por_semana:
+            lead_times_por_semana[semana_key] = {
+                'valores': [],
+                'iso_year': iso_year,
+                'iso_week': iso_week,
+            }
+        lead_times_por_semana[semana_key]['valores'].append(horas)
     
     lt_prep_promedio = sum(lead_times_prep) / len(lead_times_prep) if lead_times_prep else 0
     lt_prep_min = min(lead_times_prep) if lead_times_prep else 0
@@ -762,74 +753,42 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         })
     
     # 2. LEAD TIME DE EMBALAJE
-    # Mide: Desde que termina la preparación (MAX fecha_preparacion) hasta que se embala (MAX fecha_embalaje)
-    # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por bulto
-    # OPTIMIZADO: Usar solicitudes_list en memoria (bultos y detalles ya precargados)
-    
+    # Mide: fecha_listo_despacho − fecha_en_despacho
+    # Semántica: tiempo del proceso de embalaje/consolidación hasta quedar listo.
+    # Si el delta es negativo por datos inconsistentes (admin registró prep después de
+    # embalaje), se trata como 0 h para mantener el conteo igual al de los otros KPIs.
     lead_times_emb = []
     for solicitud in solicitudes_list:
-        # Los bultos ya están en memoria (prefetch_related)
-        bultos_embalados = [
-            b for b in solicitud.bultos.all()
-            if b.fecha_embalaje and b.estado != 'cancelado'
-        ]
-        
-        if bultos_embalados:
-            # Calcular MAX en Python (no query adicional)
-            fecha_emb_max = max(b.fecha_embalaje for b in bultos_embalados)
-            
-            # Los detalles ya están en memoria (prefetch_related)
-            fechas_prep = [
-                d.fecha_preparacion 
-                for d in solicitud.detalles.all() 
-                if d.fecha_preparacion
-            ]
-            
-            fecha_fin_preparacion = max(fechas_prep) if fechas_prep else inicio_efectivo_lead_time(solicitud)
-            
-            if fecha_fin_preparacion:
-                # Lead Time = fecha_embalaje (MAX) - fecha_fin_preparacion (MAX)
-                delta = fecha_emb_max - fecha_fin_preparacion
-                horas = delta.total_seconds() / 3600
-                if horas >= 0 and _lead_horas_validas(horas):
-                    lead_times_emb.append(horas)
-    
+        inicio_emb = solicitud.fecha_en_despacho
+        fin_emb = solicitud.fecha_listo_despacho
+        if not inicio_emb or not fin_emb:
+            continue
+        delta_h = (fin_emb - inicio_emb).total_seconds() / 3600
+        # Clamp a 0 en caso de inconsistencia de datos; excluir solo valores absurdamente grandes
+        horas = max(0.0, delta_h)
+        if _lead_horas_validas(horas):
+            lead_times_emb.append(horas)
+
     lt_emb_promedio = sum(lead_times_emb) / len(lead_times_emb) if lead_times_emb else 0
     lt_emb_min = min(lead_times_emb) if lead_times_emb else 0
     lt_emb_max = max(lead_times_emb) if lead_times_emb else 0
-    
+
     # 3. LEAD TIME TOTAL (SOLICITUD COMPLETA)
-    # Mide: Desde inicio_efectivo hasta MAX(fecha_envio/fecha_entrega) con bultos finalizados
-    # CORRECCIÓN: Contar por SOLICITUD (1 vez), no por bulto
-    # Solo usamos solicitudes con bultos finalizados porque cuando la solicitud pasa a 'despachado',
-    # todos sus bultos se finalizan automáticamente
-    # OPTIMIZADO: Usar solicitudes_list en memoria (bultos ya precargados)
-    
+    # Mide: fecha_despachado − inicio_efectivo
+    # Invariante natural: Total ≈ Preparación + Embalaje por solicitud.
     lead_times_total = []
     for solicitud in solicitudes_list:
-        # Los bultos ya están en memoria (prefetch_related)
-        bultos_final = [
-            b for b in solicitud.bultos.all()
-            if b.estado == 'finalizado' and b.fecha_envio
-        ]
-        
-        if bultos_final:
-            inicio = inicio_efectivo_lead_time(solicitud)
-            if not inicio:
-                continue
-            fechas_fin = []
-            for bulto in bultos_final:
-                fecha_fin = bulto.fecha_envio or bulto.fecha_entrega
-                if fecha_fin:
-                    fechas_fin.append(fecha_fin)
-            
-            if fechas_fin:
-                fecha_fin_max = max(fechas_fin)
-                delta = fecha_fin_max - inicio
-                horas = delta.total_seconds() / 3600
-                if _lead_horas_validas(horas):
-                    lead_times_total.append(horas)
-    
+        fin_total = solicitud.fecha_despachado
+        if not fin_total:
+            continue
+        inicio = inicio_efectivo_lead_time(solicitud)
+        if not inicio:
+            continue
+        delta = fin_total - inicio
+        horas = delta.total_seconds() / 3600
+        if _lead_horas_validas(horas):
+            lead_times_total.append(horas)
+
     lt_total_promedio = sum(lead_times_total) / len(lead_times_total) if lead_times_total else 0
     lt_total_min = min(lead_times_total) if lead_times_total else 0
     lt_total_max = max(lead_times_total) if lead_times_total else 0
@@ -1084,3 +1043,87 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     cache.set(cache_key, result, timeout=300)
     
     return result
+
+
+@login_required
+def api_kpi_detalle(request, estado):
+    """
+    API JSON para el panel offcanvas del dashboard.
+    Devuelve las solicitudes de un estado dado + métricas de demora.
+    Solo accesible por administradores.
+    """
+    if not request.user.es_admin():
+        return JsonResponse({'error': 'Acceso denegado'}, status=403)
+
+    ESTADOS_CONFIG = {
+        'total':           {'label': 'Total Solicitudes',    'color': 'primary'},
+        'pendiente':       {'label': 'Pendientes',            'color': 'warning'},
+        'en_despacho':     {'label': 'En Despacho',           'color': 'info'},
+        'listo_despacho':  {'label': 'Listo para Despacho',   'color': 'secondary'},
+        'despachado':      {'label': 'Despachadas',           'color': 'success'},
+        'urgente':         {'label': 'Urgentes (pendientes)', 'color': 'danger'},
+    }
+
+    if estado not in ESTADOS_CONFIG:
+        return JsonResponse({'error': 'Estado no válido'}, status=400)
+
+    meta = ESTADOS_CONFIG[estado]
+
+    # Siempre incluir detalles (códigos + bodegas) para todos los estados
+    qs = (
+        Solicitud.objects
+        .select_related('solicitante')
+        .prefetch_related('detalles')
+        .order_by('fecha_solicitud', 'hora_solicitud')
+    )
+    if estado == 'urgente':
+        qs = qs.filter(urgente=True, estado='pendiente')
+    elif estado != 'total':
+        qs = qs.filter(estado=estado)
+
+    hoy_chile = timezone.now().astimezone(_CHILE_TZ).date()
+
+    items = []
+    total_dias = 0
+    urgentes_count = 0
+
+    for s in qs[:200]:
+        dias = (hoy_chile - s.fecha_solicitud).days if s.fecha_solicitud else 0
+        total_dias += dias
+        if s.urgente:
+            urgentes_count += 1
+
+        items.append({
+            'id': s.id,
+            'cliente': s.cliente,
+            'tipo': s.tipo,
+            'fecha_solicitud': s.fecha_solicitud.strftime('%d/%m/%Y') if s.fecha_solicitud else '-',
+            'dias_en_sistema': dias,
+            'urgente': s.urgente,
+            'transporte': s.transporte or '-',
+            'estado': s.estado,
+            'detalles': [
+                {
+                    'codigo': d.codigo,
+                    'descripcion': d.descripcion[:60] if d.descripcion else '-',
+                    'cantidad': d.cantidad,
+                    'bodega': d.bodega or '-',
+                    'estado_bodega': d.estado_bodega or '-',
+                }
+                for d in s.detalles.all()
+            ],
+        })
+
+    total = len(items)
+    promedio_dias = round(total_dias / total, 1) if total > 0 else 0
+
+    return JsonResponse({
+        'estado': estado,
+        'label': meta['label'],
+        'color': meta['color'],
+        'total': total,
+        'promedio_dias': promedio_dias,
+        'urgentes_count': urgentes_count,
+        'hay_mas': qs.count() > 200,
+        'solicitudes': items,
+    })

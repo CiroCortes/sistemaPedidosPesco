@@ -21,6 +21,7 @@ urlpatterns = [
     path('login/', core_views.login_view, name='login'),
     path('logout/', core_views.logout_view, name='logout'),
     path('perfil/', core_views.perfil_usuario, name='perfil'),
+    path('api/kpi/<str:estado>/', core_views.api_kpi_detalle, name='api_kpi_detalle'),
     path('ia/chat/', ia_views.ia_chat, name='ia_chat'),
     
     # Gestión de Bodegas (Admin)

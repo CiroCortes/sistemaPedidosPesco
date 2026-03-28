@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static formato_filters %}
 
 {% block title %}Dashboard - Sistema PESCO{% endblock %}
 
@@ -29,7 +29,7 @@
 <!-- KPIs Cards -->
 <div class="row g-3 mb-4">
     {% if user.es_admin %}
-        <!-- KPIs Admin -->
+        <!-- KPIs Admin — clickeables: abren offcanvas con detalle -->
         <div class="col-md-3">
             <div class="card card-kpi border-primary">
                 <div class="card-body">
@@ -45,13 +45,13 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-3">
-            <div class="card card-kpi border-warning">
+            <div class="card card-kpi border-warning kpi-clickable" data-kpi-estado="pendiente" style="cursor:pointer" title="Ver detalle de pendientes">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="card-subtitle mb-2 text-muted">Pendientes</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">Pendientes <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
                             <h2 class="mb-0 text-warning">{{ solicitudes_pendientes }}</h2>
                         </div>
                         <div class="fs-1 text-warning">
@@ -61,13 +61,13 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-3">
-            <div class="card card-kpi border-info">
+            <div class="card card-kpi border-info kpi-clickable" data-kpi-estado="en_despacho" style="cursor:pointer" title="Ver detalle en despacho">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="card-subtitle mb-2 text-muted">En Despacho</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">En Despacho <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
                             <h2 class="mb-0 text-info">{{ solicitudes_en_despacho }}</h2>
                         </div>
                         <div class="fs-1 text-info">
@@ -77,13 +77,13 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-3">
-            <div class="card card-kpi border-secondary">
+            <div class="card card-kpi border-secondary kpi-clickable" data-kpi-estado="listo_despacho" style="cursor:pointer" title="Ver detalle listo para despacho">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="card-subtitle mb-2 text-muted">Listo para despacho</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">Listo para despacho <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
                             <h2 class="mb-0 text-secondary">{{ solicitudes_listo_despacho }}</h2>
                         </div>
                         <div class="fs-1 text-secondary">
@@ -93,13 +93,13 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-3">
-            <div class="card card-kpi border-success">
+            <div class="card card-kpi border-success kpi-clickable" data-kpi-estado="despachado" style="cursor:pointer" title="Ver detalle de despachadas">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="card-subtitle mb-2 text-muted">Despachadas</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">Despachadas <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
                             <h2 class="mb-0 text-success">{{ solicitudes_despachadas }}</h2>
                         </div>
                         <div class="fs-1 text-success">
@@ -109,13 +109,13 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-3">
-            <div class="card card-kpi border-danger">
+            <div class="card card-kpi border-danger kpi-clickable" data-kpi-estado="urgente" style="cursor:pointer" title="Ver detalle de urgentes">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="card-subtitle mb-2 text-muted">Urgentes (pendientes)</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">Urgentes (pendientes) <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
                             <h2 class="mb-0 text-danger">{{ solicitudes_urgentes }}</h2>
                         </div>
                         <div class="fs-1 text-danger">
@@ -455,7 +455,7 @@
                                     <tr>
                                         <td><strong>{{ item.transporte }}</strong></td>
                                         <td><span class="badge bg-primary">{{ item.cantidad_solicitudes }}</span></td>
-                                        <td>${{ item.valor_usd|floatformat:2 }}</td>
+                                        <td>{{ item.valor_usd|formato_usd }}</td>
                                         <td>
                                             <span class="badge {% if item.dias_laborales >= 3 %}bg-danger{% elif item.dias_laborales >= 2 %}bg-warning{% else %}bg-success{% endif %}">
                                                 {{ item.horas_laborales|floatformat:1 }}h
@@ -1143,6 +1143,293 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 </div>
+{% endif %}
+
+{% if user.es_admin %}
+<!-- ============================================================
+     Offcanvas KPI Detalle — panel lateral reutilizable para todas
+     las tarjetas del dashboard. Un solo panel, estado cambia vía
+     fetch al endpoint /api/kpi/<estado>/
+     ============================================================ -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasKpi" aria-labelledby="offcanvasKpiLabel" style="width:700px;max-width:95vw;">
+    <div class="offcanvas-header border-bottom" id="offcanvasKpiHeader">
+        <h5 class="offcanvas-title fw-semibold" id="offcanvasKpiLabel">
+            <i class="bi bi-bar-chart-line me-2"></i>
+            <span id="kpiTitulo">Detalle</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+    </div>
+
+    <!-- Resumen -->
+    <div class="p-3 border-bottom bg-light d-none" id="kpiSummary">
+        <div class="row g-2 text-center">
+            <div class="col-4">
+                <div class="rounded border bg-white p-2">
+                    <div class="fs-4 fw-bold" id="kpiTotal">-</div>
+                    <div class="small text-muted">Total</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="rounded border bg-white p-2">
+                    <div class="fs-4 fw-bold text-primary" id="kpiPromedio">-</div>
+                    <div class="small text-muted">Días promedio</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="rounded border bg-white p-2">
+                    <div class="fs-4 fw-bold text-danger" id="kpiUrgentes">-</div>
+                    <div class="small text-muted">Urgentes</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="offcanvas-body p-0">
+        <!-- Estado: cargando -->
+        <div id="kpiLoading" class="text-center py-5 d-none">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="mt-2 text-muted small">Cargando solicitudes…</div>
+        </div>
+
+        <!-- Estado: error -->
+        <div id="kpiError" class="alert alert-danger mx-3 mt-3 d-none">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <span id="kpiErrorMsg">Error al cargar los datos.</span>
+        </div>
+
+        <!-- Tabla de resultados -->
+        <div id="kpiTablaWrapper" class="d-none">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0 align-middle">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>#</th>
+                            <th>Cliente</th>
+                            <th>Tipo</th>
+                            <th>Fecha</th>
+                            <th class="text-center">Días</th>
+                            <th>Transporte</th>
+                            <th>Bodega</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kpiTablaBody"></tbody>
+                </table>
+            </div>
+            <div class="p-3 border-top d-flex justify-content-between align-items-center">
+                <small class="text-muted" id="kpiNota"></small>
+                <a id="kpiVerTodos" href="{% url 'solicitudes:lista' %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-list-ul me-1"></i>Ver listado completo
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    'use strict';
+
+    const offcanvasEl = document.getElementById('offcanvasKpi');
+    // Estado de la petición en curso (evita race conditions)
+    let _pendingEstado = null;
+
+    const COLOR_CLASS = {
+        primary: 'text-primary', warning: 'text-warning',
+        info: 'text-info', secondary: 'text-secondary',
+        success: 'text-success', danger: 'text-danger',
+    };
+
+    function diasBadge(dias) {
+        const cls = dias >= 5 ? 'bg-danger' : dias >= 3 ? 'bg-warning text-dark' : 'bg-success';
+        return `<span class="badge ${cls}">${dias}d</span>`;
+    }
+
+    // Usar clases en vez de style inline → inmune a problemas de transición del offcanvas
+    function setVisible(id, show) {
+        const el = document.getElementById(id);
+        if (!el) { console.warn('[KPI] setVisible: elemento no encontrado:', id); return; }
+        el.classList.toggle('d-none', !show);
+    }
+
+    function showLoading() {
+        const titulo = document.getElementById('kpiTitulo');
+        const label  = document.getElementById('offcanvasKpiLabel');
+        if (titulo) titulo.textContent = 'Cargando...';
+        if (label)  label.className = 'offcanvas-title fw-semibold text-muted';
+
+        ['kpiTotal', 'kpiPromedio', 'kpiUrgentes'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '-';
+        });
+        const nota = document.getElementById('kpiNota');
+        if (nota) nota.textContent = '';
+
+        const tabla = document.querySelector('#kpiTablaWrapper table');
+        if (tabla) tabla.innerHTML = '';
+
+        setVisible('kpiLoading', true);
+        setVisible('kpiError', false);
+        setVisible('kpiTablaWrapper', false);
+        setVisible('kpiSummary', false);
+    }
+
+    function showError(msg) {
+        setVisible('kpiLoading', false);
+        const errEl = document.getElementById('kpiErrorMsg');
+        if (errEl) errEl.textContent = msg;
+        setVisible('kpiError', true);
+    }
+
+    // ---- Helpers ----
+
+    function buildThead(cols) {
+        return '<thead class="table-light sticky-top"><tr>' +
+            cols.map(c => `<th${c.center ? ' class="text-center"' : ''}>${c.label}</th>`).join('') +
+            '</tr></thead>';
+    }
+
+    // Detalle de bodega: solo se muestra en pendiente (es informativo); en los demás estados
+    // la bodega de origen ya no importa (el producto está en 013 o en tránsito).
+    const DETALLE_COLS_PENDIENTE = 7;   // toggle + # + cliente + tipo + fecha + días + transporte
+    const DETALLE_COLS_OTROS     = 7;   // igual cantidad de columnas con bodega visible en detalles
+
+    function detalleRows(s, estado) {
+        return (s.detalles || []).map((d, idx) => {
+            const esPendiente = estado === 'pendiente' || estado === 'urgente';
+            const estadoCls = d.estado_bodega === 'pendiente' ? 'bg-warning text-dark'
+                : d.estado_bodega === 'preparado' ? 'bg-success' : 'bg-secondary';
+            const bodegaCell = esPendiente
+                ? `<td><span class="badge bg-light text-dark border"><i class="bi bi-building me-1"></i>${d.bodega}</span></td>`
+                : `<td><span class="badge bg-light text-dark border">${d.bodega !== '-' ? d.bodega : '013'}</span></td>`;
+            return `<tr class="kpi-det-row table-light small text-muted" data-group="det-${s.id}" style="display:none">
+                <td></td>
+                <td>${idx === 0 ? '<i class="bi bi-diagram-3"></i>' : ''}</td>
+                <td colspan="2"><code class="text-primary">${d.codigo}</code> <span>${d.descripcion}</span></td>
+                ${bodegaCell}
+                <td class="text-center"><span class="badge ${estadoCls}">${d.cantidad}</span></td>
+                <td><span class="badge ${estadoCls} text-nowrap">${d.estado_bodega}</span></td>
+            </tr>`;
+        });
+    }
+
+    // Renderer unificado con toggles para todos los estados
+    function renderSolicitudes(solicitudes, estado) {
+        const cols = [
+            {label: ''}, {label: '#'}, {label: 'Cliente'}, {label: 'Tipo'},
+            {label: 'Fecha'}, {label: 'Días', center: true}, {label: 'Transporte'}
+        ];
+        const thead = buildThead(cols);
+
+        const rows = solicitudes.flatMap(s => {
+            const urgenteBadge = s.urgente ? ' <span class="badge bg-danger ms-1">Urgente</span>' : '';
+            const rowClass = s.urgente ? 'table-warning' : '';
+            const nDet = (s.detalles || []).length;
+            const toggle = nDet
+                ? `<button class="btn btn-sm btn-link p-0 text-secondary kpi-toggle"
+                           data-target="det-${s.id}" title="${nDet} línea(s)">
+                       <i class="bi bi-chevron-right"></i>
+                   </button>`
+                : '<span class="text-muted">—</span>';
+
+            const solRow = `<tr class="${rowClass}">
+                <td class="text-center">${toggle}</td>
+                <td><a href="/solicitudes/${s.id}/" class="fw-bold text-decoration-none">#${s.id}</a>${urgenteBadge}</td>
+                <td class="text-truncate" style="max-width:120px" title="${s.cliente}">${s.cliente}</td>
+                <td><span class="badge bg-light text-dark border">${s.tipo}</span></td>
+                <td class="text-nowrap">${s.fecha_solicitud}</td>
+                <td class="text-center">${diasBadge(s.dias_en_sistema)}</td>
+                <td>${s.transporte}</td>
+            </tr>`;
+
+            return [solRow, ...detalleRows(s, estado)];
+        });
+
+        return {thead, rows, colspan: 7};
+    }
+
+    function bindToggles() {
+        document.querySelectorAll('.kpi-toggle').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const group = this.dataset.target;
+                const icon = this.querySelector('i');
+                const opening = icon.classList.contains('bi-chevron-right');
+                document.querySelectorAll(`[data-group="${group}"]`).forEach(row => {
+                    row.style.display = opening ? '' : 'none';
+                });
+                icon.classList.toggle('bi-chevron-right', !opening);
+                icon.classList.toggle('bi-chevron-down', opening);
+            });
+        });
+    }
+
+    function renderData(data) {
+        // Encabezado + color
+        document.getElementById('offcanvasKpiLabel').className =
+            'offcanvas-title fw-semibold ' + (COLOR_CLASS[data.color] || '');
+        document.getElementById('kpiTitulo').textContent = data.label;
+
+        // Resumen
+        document.getElementById('kpiTotal').textContent = data.total;
+        document.getElementById('kpiPromedio').textContent = data.promedio_dias + 'd';
+        document.getElementById('kpiUrgentes').textContent = data.urgentes_count;
+        setVisible('kpiSummary', true);
+
+        // Renderizar tabla (mismo renderer para todos los estados)
+        const {thead, rows, colspan} = renderSolicitudes(data.solicitudes, data.estado);
+        const tabla = document.querySelector('#kpiTablaWrapper table');
+        tabla.innerHTML = thead +
+            '<tbody>' + (rows.length
+                ? rows.join('')
+                : `<tr><td colspan="${colspan}" class="text-center py-4 text-muted">Sin solicitudes en este estado.</td></tr>`
+            ) + '</tbody>';
+
+        document.getElementById('kpiNota').textContent = data.hay_mas
+            ? 'Mostrando los 200 primeros resultados.' : '';
+
+        setVisible('kpiLoading', false);
+        setVisible('kpiTablaWrapper', true);
+
+        bindToggles();
+    }
+
+    function cargarKpi(estado) {
+        showLoading();
+        fetch(`/api/kpi/${estado}/`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json().then(data => r.ok ? data : Promise.reject(data.error || 'Error del servidor')))
+        .then(data => { if (_pendingEstado === estado) renderData(data); })
+        .catch(err => { if (_pendingEstado === estado) showError(typeof err === 'string' ? err : 'No se pudo cargar el detalle.'); });
+    }
+
+    // Si el offcanvas ya está abierto, mostrar directamente.
+    // Si está en transición/cerrado, esperar al evento 'shown' para lanzar el fetch
+    // (evita que showLoading toque el DOM mientras Bootstrap anima la apertura).
+    document.querySelectorAll('.kpi-clickable').forEach(card => {
+        card.addEventListener('click', function () {
+            const estado = this.dataset.kpiEstado;
+            if (!estado) return;
+            _pendingEstado = estado;
+
+            const inst = bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl);
+            const isShown = offcanvasEl.classList.contains('show');
+
+            if (isShown) {
+                // Ya visible: limpiar y cargar directamente
+                cargarKpi(estado);
+            } else {
+                // Esperamos a que Bootstrap termine de abrir antes de lanzar el fetch
+                offcanvasEl.addEventListener('shown.bs.offcanvas', function handler() {
+                    offcanvasEl.removeEventListener('shown.bs.offcanvas', handler);
+                    cargarKpi(estado);
+                });
+                showLoading();
+                inst.show();
+            }
+        });
+    });
+});
+</script>
 {% endif %}
 
 {% endblock %}

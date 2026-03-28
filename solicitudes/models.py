@@ -132,7 +132,7 @@ class Solicitud(models.Model):
         verbose_name='Solicitante'
     )
     
-    # Timestamps
+    # Timestamps generales
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name='Creado el'
@@ -140,6 +140,23 @@ class Solicitud(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
         verbose_name='Actualizado el'
+    )
+
+    # Timestamps de transición de estado (para KPIs de lead time)
+    fecha_en_despacho = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Fecha en despacho',
+        help_text='Momento en que la solicitud pasó a estado en_despacho'
+    )
+    fecha_listo_despacho = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Fecha listo para despacho',
+        help_text='Momento en que la solicitud pasó a estado listo_despacho'
+    )
+    fecha_despachado = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Fecha despachada',
+        help_text='Momento en que la solicitud pasó a estado despachado'
     )
     
     class Meta:
@@ -186,6 +203,11 @@ class Solicitud(models.Model):
             models.Index(fields=['solicitante'], name='idx_solicitante'),
         ]
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Guarda el estado original para detectar transiciones en save()
+        self._estado_original = self.estado
+
     def __str__(self):
         return f"Solicitud #{self.id} - {self.cliente} - {self.get_estado_display()}"
     
@@ -254,12 +276,34 @@ class Solicitud(models.Model):
 
     def save(self, *args, **kwargs):
         """
-        Genera automáticamente el número ST cuando corresponde.
-        Reinicia la numeración cada año.
+        - Genera automáticamente el número ST cuando corresponde.
+        - Registra timestamps de transición de estado para KPIs de lead time.
         """
         if self.tipo == 'ST' and not self.numero_st:
             self.numero_st = self._generar_numero_st()
+
+        # Detectar transición y grabar timestamp correspondiente
+        estado_anterior = getattr(self, '_estado_original', None)
+        campos_extra = []
+
+        if self.estado != estado_anterior:
+            ahora = timezone.now()
+            if self.estado == 'en_despacho' and not self.fecha_en_despacho:
+                self.fecha_en_despacho = ahora
+                campos_extra.append('fecha_en_despacho')
+            elif self.estado == 'listo_despacho' and not self.fecha_listo_despacho:
+                self.fecha_listo_despacho = ahora
+                campos_extra.append('fecha_listo_despacho')
+            elif self.estado == 'despachado' and not self.fecha_despachado:
+                self.fecha_despachado = ahora
+                campos_extra.append('fecha_despachado')
+
+        # Si el caller usó update_fields, añadir los campos extra para que persistan
+        if campos_extra and 'update_fields' in kwargs:
+            kwargs['update_fields'] = list(kwargs['update_fields']) + campos_extra
+
         super().save(*args, **kwargs)
+        self._estado_original = self.estado
 
     def _generar_numero_st(self):
         chile_tz = pytz.timezone('America/Santiago')
