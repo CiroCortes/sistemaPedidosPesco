@@ -510,6 +510,8 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         'SUC ANTOFAGASTA': ['SUC ANTOFAGASTA', 'SUCURSAL ANTOFAGASTA', 'SUC ANTOFA', 'Suc Antofagasta', 'suc antofagasta', 'sucursal antofagasta'],
         'SUC PTO MONTT': ['SUC PTO MONTT', 'SUC PTO. MONTT', 'SUC PUERTO MONTT', 'SUCURSAL PTO MONTT', 'Suc Pto Montt', 'suc pto montt'],
         'SUC LOS ANGELES': ['SUC LOS ANGELES', 'SUCURSAL LOS ANGELES', 'SUC LOS ÁNGELES', 'Suc Los Angeles', 'suc los angeles'],
+        'TALLER HMS': ['HMS', 'TALLER HMS', 'taller hms'],
+        'TALLER OLEOHTEC': ['OLEOHTEC', 'TALLER OLEOHTEC', 'taller oleohtec'],
     }
     
     def normalizar_cliente(cliente):
@@ -564,6 +566,8 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         'SUC CALAMA',
         'SUC PTO MONTT',
         'SUC LOS ANGELES',
+        'TALLER HMS',
+        'TALLER OLEOHTEC',
         'Camión PESCO',  # Transporte propio - separado de OTROS
         'Retira cliente',
         'OTROS'
@@ -573,7 +577,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     categorias_agregadas = set()
     
     # Agregar sucursales en el orden especificado
-    for sucursal in ['SUC ANTOFAGASTA', 'SUC CALAMA', 'SUC PTO MONTT', 'SUC LOS ANGELES']:
+    for sucursal in ['SUC ANTOFAGASTA', 'SUC CALAMA', 'SUC PTO MONTT', 'SUC LOS ANGELES', 'TALLER HMS', 'TALLER OLEOHTEC']:
         if sucursal in operaciones_sucursales and sucursal not in categorias_agregadas:
             ops = operaciones_sucursales[sucursal]
             porcentaje = (ops / total_operaciones * 100) if total_operaciones > 0 else 0

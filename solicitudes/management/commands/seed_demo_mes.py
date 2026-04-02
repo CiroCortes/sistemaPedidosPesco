@@ -50,6 +50,8 @@ CLIENTES_DEMO_PESOS = {
     'MAIPU CONSTRUCTORA': 5,
     'AGRO SUR': 5,
     'TRANS IMPORT': 5,
+    'TALLER HMS': 5,
+    'TALLER OLEOHTECH': 5,
 }
 
 ESTADOS_PESOS = [
@@ -261,6 +263,12 @@ class Command(BaseCommand):
             for _ in range(n_pedidos):
                 seq_demo += 1
                 estado = _elegir_estado()
+                # Los estados activos (no terminales) solo tienen sentido en días recientes.
+                # Si el pedido es de hace más de 3 días y quedó en estado intermedio,
+                # en la realidad ya habría sido despachado → forzar a despachado.
+                dias_atras = (hoy - dia).days
+                if dias_atras > 3 and estado != 'despachado':
+                    estado = 'despachado'
                 tipo = random.choices(['PC', 'OF', 'ST'], weights=[78, 14, 8], k=1)[0]
                 cliente = clientes_seq[cli_i]
                 cli_i += 1
@@ -359,6 +367,12 @@ class Command(BaseCommand):
                             fecha_envio=env,
                             fecha_entrega=ent,
                         )
+                        # Timestamps de transición: pedido → en_despacho → listo → despachado
+                        Solicitud.objects.filter(pk=s.pk).update(
+                            fecha_en_despacho=base_prep,
+                            fecha_listo_despacho=emb,
+                            fecha_despachado=env,
+                        )
                     elif estado == 'listo_despacho':
                         b = Bulto.objects.create(
                             solicitud=s,
@@ -370,6 +384,11 @@ class Command(BaseCommand):
                         SolicitudDetalle.objects.filter(solicitud=s).update(bulto=b)
                         emb = base_prep + timedelta(hours=random.randint(1, 36))
                         Bulto.objects.filter(pk=b.pk).update(fecha_embalaje=emb)
+                        # Timestamps de transición: pedido → en_despacho → listo (aún no despachado)
+                        Solicitud.objects.filter(pk=s.pk).update(
+                            fecha_en_despacho=base_prep,
+                            fecha_listo_despacho=emb,
+                        )
                     elif estado == 'embalado':
                         b = Bulto.objects.create(
                             solicitud=s,
@@ -381,6 +400,10 @@ class Command(BaseCommand):
                         SolicitudDetalle.objects.filter(solicitud=s).update(bulto=b)
                         emb = base_prep + timedelta(hours=random.randint(1, 24))
                         Bulto.objects.filter(pk=b.pk).update(fecha_embalaje=emb)
+                        # Timestamps de transición: pedido → en_despacho → embalando (aún no listo)
+                        Solicitud.objects.filter(pk=s.pk).update(
+                            fecha_en_despacho=base_prep,
+                        )
                     elif estado == 'en_despacho':
                         b = Bulto.objects.create(
                             solicitud=s,
@@ -390,8 +413,12 @@ class Command(BaseCommand):
                             **_medidas_bulto_demo(),
                         )
                         SolicitudDetalle.objects.filter(solicitud=s).update(bulto=b)
+                        # Timestamps de transición: pedido → en_despacho (preparación recién terminó)
+                        Solicitud.objects.filter(pk=s.pk).update(
+                            fecha_en_despacho=base_prep,
+                        )
                     elif estado == 'pendiente':
-                        # Sin bulto la ficha de solicitud no muestra peso/medidas; KPI despachados no usa estos.
+                        # Sin transición de estado aún; no se graban timestamps de workflow.
                         b = Bulto.objects.create(
                             solicitud=s,
                             transportista=s.transporte or 'PESCO',
