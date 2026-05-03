@@ -182,35 +182,27 @@ def crear_bulto(request):
             messages.error(request, f'Estos productos no han sido preparados por bodega: {mensajes}')
             return redirect('despacho:gestion')
 
-    # Validar que todos los detalles pertenezcan a la misma solicitud
-    # Un bulto solo puede estar asociado a una solicitud
-    solicitudes_detalles = {detalle.solicitud_id for detalle in detalles}
-    if len(solicitudes_detalles) > 1:
-        solicitudes_ids = ', '.join(f'#{sid}' for sid in sorted(list(solicitudes_detalles))[:3])
-        messages.error(
-            request,
-            f'Un bulto solo puede contener productos de una sola solicitud. '
-            f'Solicitudes detectadas: {solicitudes_ids}'
-        )
-        return redirect('despacho:gestion')
-
-    # Obtener la única solicitud
-    solicitud_unica = detalles[0].solicitud
+    # Identificar todas las solicitudes involucradas
+    solicitudes_ids = {detalle.solicitud_id for detalle in detalles}
+    solicitudes_afectadas = Solicitud.objects.filter(id__in=solicitudes_ids)
 
     if form.is_valid():
         es_despachador = request.user.es_despacho()
         with transaction.atomic():
             bulto = form.save(commit=False)
             bulto.creado_por = request.user
-            # Solo despachador: bulto y solicitud pasan directo a listo_despacho.
-            # Admin: bulto queda embalado (puede actualizar estado después).
+            
             if es_despachador:
                 bulto.estado = 'listo_despacho'
             else:
                 bulto.estado = 'embalado'
-            # Asignar la solicitud ANTES de guardar (campo obligatorio NOT NULL)
-            bulto.solicitud = solicitud_unica
-            # Establecer fecha_embalaje automáticamente al crear el bulto
+            
+            # Asignar solicitud principal solo si hay una sola involucrada
+            if len(solicitudes_ids) == 1:
+                bulto.solicitud = solicitudes_afectadas.first()
+            else:
+                bulto.solicitud = None
+                
             if not bulto.fecha_embalaje:
                 bulto.fecha_embalaje = timezone.now()
             bulto.save()
@@ -220,12 +212,17 @@ def crear_bulto(request):
                 detalle.bulto = bulto
                 detalle.save(update_fields=['bulto'])
             
-            # Si todos los detalles de la solicitud están en bultos, cambiar estado
-            if not solicitud_unica.detalles.filter(bulto__isnull=True).exists():
-                solicitud_unica.estado = 'listo_despacho'
-                solicitud_unica.save(update_fields=['estado'])
+            # Actualizar estado de TODAS las solicitudes involucradas
+            for sol in solicitudes_afectadas:
+                # Si todos los detalles de esta solicitud ya están en bultos, cambiar estado
+                if not sol.detalles.filter(bulto__isnull=True).exists():
+                    sol.estado = 'listo_despacho'
+                    sol.save(update_fields=['estado'])
 
             mensaje = f'Bulto {bulto.codigo} creado con {len(detalles)} códigos.'
+            if len(solicitudes_ids) > 1:
+                mensaje += f' (Consolidado de {len(solicitudes_ids)} solicitudes)'
+            
             if es_despachador:
                 mensaje += ' Estado: Listo para despacho.'
             messages.success(request, mensaje)
@@ -247,12 +244,20 @@ def detalle_bulto(request, pk):
 
     # Obtener información de numeración de bultos (ej: 1-1, 1-2, 2-2)
     solicitud = bulto.solicitud
+    
+    # Si es multi-solicitud, intentar tomar la primera como referencia para la UI
+    if not solicitud:
+        primer_detalle = detalles.first()
+        if primer_detalle:
+            solicitud = primer_detalle.solicitud
+
     numero_bulto = None
     total_bultos = None
     
-    if solicitud:
+    # La numeración solo tiene sentido si el bulto está vinculado formalmente a una sola solicitud
+    if bulto.solicitud:
         # Obtener todos los bultos de esta solicitud ordenados por fecha de creación
-        bultos_solicitud = solicitud.bultos.all().order_by('fecha_creacion')
+        bultos_solicitud = bulto.solicitud.bultos.all().order_by('fecha_creacion')
         total_bultos = bultos_solicitud.count()
         
         # Encontrar el índice de este bulto (1-based)
@@ -310,35 +315,35 @@ def actualizar_estado_bulto(request, pk):
     # Un bulto solo puede tener una solicitud (ahora es ForeignKey directo)
     solicitud = bulto.solicitud
     
-    if solicitud:
+    # Obtener todas las solicitudes que tienen ítems en este bulto
+    solicitudes_ids = bulto.detalles.values_list('solicitud_id', flat=True).distinct()
+    solicitudes_afectadas = Solicitud.objects.filter(id__in=solicitudes_ids)
+    
+    for sol in solicitudes_afectadas:
         if bulto.estado == 'finalizado':
-            # Estado terminal: cuando un bulto se marca como finalizado,
-            # la solicitud debe estar en 'despachado' (estado final del ciclo)
             if not bulto.fecha_entrega:
                 bulto.fecha_entrega = timezone.now()
                 bulto.save(update_fields=['fecha_entrega'])
             
-            # Si la solicitud no está despachada, actualizarla (sincronización)
-            if solicitud.estado != 'despachado':
-                solicitud.estado = 'despachado'
-                solicitud.save(update_fields=['estado'])
+            if sol.estado != 'despachado':
+                sol.estado = 'despachado'
+                sol.save(update_fields=['estado'])
         elif bulto.estado == 'entregado':
-            # Mantener lógica existente para 'entregado' (estado intermedio)
             bulto.fecha_entrega = bulto.fecha_entrega or timezone.now()
             bulto.save(update_fields=['fecha_entrega'])
-            if solicitud.estado != 'despachado':
-                solicitud.estado = 'despachado'
-                solicitud.save(update_fields=['estado'])
+            if sol.estado != 'despachado':
+                sol.estado = 'despachado'
+                sol.save(update_fields=['estado'])
         elif bulto.estado == 'en_ruta':
             if not bulto.fecha_envio:
                 bulto.fecha_envio = timezone.now()
                 bulto.save(update_fields=['fecha_envio'])
-            if solicitud.estado != 'en_ruta':
-                solicitud.estado = 'en_ruta'
-                solicitud.save(update_fields=['estado'])
+            if sol.estado != 'en_ruta':
+                sol.estado = 'en_ruta'
+                sol.save(update_fields=['estado'])
         elif bulto.estado == 'listo_despacho':
-            if solicitud.estado not in ['listo_despacho', 'en_ruta', 'despachado']:
-                solicitud.estado = 'listo_despacho'
-                solicitud.save(update_fields=['estado'])
+            if sol.estado not in ['listo_despacho', 'en_ruta', 'despachado']:
+                sol.estado = 'listo_despacho'
+                sol.save(update_fields=['estado'])
 
     return JsonResponse({'success': True})

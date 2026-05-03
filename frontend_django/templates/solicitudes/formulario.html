@@ -414,7 +414,6 @@ input[readonly] {
         </form>
     </div>
 </div>
-
 {% endblock %}
 
 {% block extra_js %}
@@ -425,450 +424,101 @@ document.addEventListener('DOMContentLoaded', function() {
     const template = document.querySelector('#empty-form-template tr');
     const totalFormsInput = document.getElementById('id_detalles-TOTAL_FORMS');
     const maxForms = 45;
-    const csrfToken = '{{ csrf_token }}';
 
-    if (!btnAgregar || !tbody || !template || !totalFormsInput) return;
-
-    // Función para buscar código en stock
-    function buscarCodigoEnStock(codigoInput) {
-        const codigo = codigoInput.value.trim().toUpperCase();
-        if (!codigo || codigo.length < 3) return;
-
-        const row = codigoInput.closest('tr');
-        const descripcionInput = row.querySelector('[name*="descripcion"]');
-        const bodegaSelect = row.querySelector('[name*="bodega"]');
-        
-        console.log('🔍 Buscando código:', codigo);
-
-        fetch('/solicitudes/api/buscar-codigo/?codigo=' + encodeURIComponent(codigo))
-            .then(response => response.json())
-            .then(data => {
-                console.log('📦 Respuesta:', data);
-                
-                if (data.success) {
-                    // Autocompletar descripción
-                    if (descripcionInput) {
-                        descripcionInput.value = data.descripcion || '';
-                        descripcionInput.readOnly = true;
-                        descripcionInput.style.backgroundColor = '#e9ecef';
-                    }
-                    
-                    // Mostrar información de stock
-                    let stockInfo = '';
-                    if (data.bodegas && data.bodegas.length > 0) {
-                        stockInfo = '<div class="alert alert-success alert-sm mt-1 mb-0 py-1 px-2 small">';
-                        stockInfo += '<strong>Stock disponible:</strong><br>';
-                        data.bodegas.forEach(b => {
-                            stockInfo += `📦 <strong>${b.codigo_bodega}</strong> (${b.nombre_bodega}): ${b.stock_disponible} unidades<br>`;
-                        });
-                        stockInfo += '</div>';
-                        
-                        // Actualizar opciones de bodega
-                        if (bodegaSelect) {
-                            // Guardar la opción vacía si existe
-                            const emptyOption = bodegaSelect.querySelector('option[value=""]');
-                            
-                            // Limpiar opciones actuales excepto la vacía
-                            bodegaSelect.innerHTML = '';
-                            if (emptyOption) {
-                                bodegaSelect.appendChild(emptyOption.cloneNode(true));
-                            }
-                            
-                            // Agregar solo las bodegas que tienen stock de este código
-                            data.bodegas.forEach(b => {
-                                const option = new Option(
-                                    `${b.codigo_bodega} · ${b.nombre_bodega} (Stock: ${b.stock_disponible})`, 
-                                    b.codigo_bodega
-                                );
-                                bodegaSelect.add(option);
-                            });
-                            
-                            // Seleccionar automáticamente la primera bodega con stock
-                            if (data.bodegas.length === 1) {
-                                bodegaSelect.value = data.bodegas[0].codigo_bodega;
-                            } else if (data.bodegas.length > 1) {
-                                // Resaltar el select para que el usuario elija
-                                bodegaSelect.style.borderColor = '#0d6efd';
-                                bodegaSelect.style.borderWidth = '2px';
-                            }
-                        }
-                    } else {
-                        stockInfo = '<div class="alert alert-warning alert-sm mt-1 mb-0 py-1 px-2 small">';
-                        stockInfo += '⚠️ <strong>Sin stock disponible</strong> en ninguna bodega. Puedes seleccionar una bodega manualmente si deseas continuar.';
-                        stockInfo += '</div>';
-                    }
-                    
-                    // Insertar información después de la fila
-                    let infoRow = row.nextElementSibling;
-                    if (infoRow && infoRow.classList.contains('stock-info-row')) {
-                        infoRow.remove();
-                    }
-                    
-                    const newInfoRow = document.createElement('tr');
-                    newInfoRow.classList.add('stock-info-row');
-                    newInfoRow.innerHTML = `<td colspan="4">${stockInfo}</td>`;
-                    row.after(newInfoRow);
-                    
-                } else {
-                    // Código no encontrado
-                    if (descripcionInput) {
-                        descripcionInput.value = '';
-                        descripcionInput.readOnly = false;
-                        descripcionInput.style.backgroundColor = '';
-                    }
-                    
-                    let infoRow = row.nextElementSibling;
-                    if (infoRow && infoRow.classList.contains('stock-info-row')) {
-                        infoRow.remove();
-                    }
-                    
-                    const newInfoRow = document.createElement('tr');
-                    newInfoRow.classList.add('stock-info-row');
-                    newInfoRow.innerHTML = `<td colspan="4"><div class="alert alert-danger alert-sm mt-1 mb-0 py-1 px-2 small">❌ ${data.message}</div></td>`;
-                    row.after(newInfoRow);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
+    if (btnAgregar && tbody && template && totalFormsInput) {
+        btnAgregar.addEventListener('click', function() {
+            let total = parseInt(totalFormsInput.value || '0', 10);
+            if (total >= maxForms) return;
+            const newRow = template.cloneNode(true);
+            newRow.innerHTML = newRow.innerHTML.replace(/__prefix__/g, total);
+            tbody.appendChild(newRow);
+            totalFormsInput.value = total + 1;
+        });
     }
-
-    // Agregar evento a los inputs de código existentes
-    tbody.querySelectorAll('[name*="codigo"]').forEach(input => {
-        input.addEventListener('blur', function() {
-            buscarCodigoEnStock(this);
-        });
-        input.addEventListener('input', function() {
-            this.value = this.value.toUpperCase();
-        });
-    });
-    
-    // Agregar evento a los selects de bodega existentes
-    tbody.querySelectorAll('[name*="bodega"]').forEach(select => {
-        select.addEventListener('change', function() {
-            this.style.borderColor = '';
-            this.style.borderWidth = '';
-        });
-    });
-
-    // Agregar nueva línea
-    btnAgregar.addEventListener('click', function() {
-        let total = parseInt(totalFormsInput.value || '0', 10);
-        if (total >= maxForms) {
-            alert('Ya alcanzaste el máximo de 45 líneas de productos.');
-            return;
-        }
-
-        const newRow = template.cloneNode(true);
-        let html = newRow.innerHTML.replace(/__prefix__/g, total);
-        newRow.innerHTML = html;
-        
-        // Agregar eventos a los nuevos inputs
-        const codigoInput = newRow.querySelector('[name*="codigo"]');
-        const bodegaSelect = newRow.querySelector('[name*="bodega"]');
-        
-        if (codigoInput) {
-            codigoInput.addEventListener('blur', function() {
-                buscarCodigoEnStock(this);
-            });
-            codigoInput.addEventListener('input', function() {
-                this.value = this.value.toUpperCase();
-            });
-        }
-        
-        // Resetear estilo del select de bodega al cambiar
-        if (bodegaSelect) {
-            bodegaSelect.addEventListener('change', function() {
-                this.style.borderColor = '';
-                this.style.borderWidth = '';
-            });
-        }
-        
-        tbody.appendChild(newRow);
-        totalFormsInput.value = total + 1;
-        
-        // Enfocar el nuevo input de código
-        if (codigoInput) {
-            codigoInput.focus();
-        }
-    });
 });
 </script>
 
 {% if es_edicion_avanzada %}
 <script>
 // ============================================================
-// VALIDACIÓN DE FECHAS PARA CONTROL DE KPIs
-// ============================================================
-document.addEventListener('DOMContentLoaded', function() {
-    const alertValidacion = document.getElementById('alertValidacion');
-    const listaValidaciones = document.getElementById('listaValidaciones');
-    
-    if (!alertValidacion || !listaValidaciones) return;
-    
-    // Función para validar consistencia de fechas
-    function validarFechas() {
-        const validaciones = [];
-        
-        // Obtener todas las fechas de preparación
-        const fechasPreparacion = [];
-        document.querySelectorAll('[name*="detalles-"][name*="-fecha_preparacion"]').forEach(input => {
-            if (input.value) {
-                fechasPreparacion.push({
-                    elemento: input,
-                    fecha: new Date(input.value),
-                    nombre: 'Preparación'
-                });
-            }
-        });
-        
-        // Obtener todas las fechas de bultos
-        const fechasEmbalaje = [];
-        const fechasEnvio = [];
-        const fechasEntrega = [];
-        
-        document.querySelectorAll('[name*="bultos-"][name*="-fecha_embalaje"]').forEach(input => {
-            if (input.value) {
-                fechasEmbalaje.push({
-                    elemento: input,
-                    fecha: new Date(input.value),
-                    nombre: 'Embalaje',
-                    row: input.closest('tr')
-                });
-            }
-        });
-        
-        document.querySelectorAll('[name*="bultos-"][name*="-fecha_envio"]').forEach(input => {
-            if (input.value) {
-                fechasEnvio.push({
-                    elemento: input,
-                    fecha: new Date(input.value),
-                    nombre: 'Envío',
-                    row: input.closest('tr')
-                });
-            }
-        });
-        
-        document.querySelectorAll('[name*="bultos-"][name*="-fecha_entrega"]').forEach(input => {
-            if (input.value) {
-                fechasEntrega.push({
-                    elemento: input,
-                    fecha: new Date(input.value),
-                    nombre: 'Entrega',
-                    row: input.closest('tr')
-                });
-            }
-        });
-        
-        // Validación 1: Embalaje debe ser después de preparación
-        if (fechasPreparacion.length > 0 && fechasEmbalaje.length > 0) {
-            const maxPreparacion = Math.max(...fechasPreparacion.map(f => f.fecha.getTime()));
-            fechasEmbalaje.forEach(emb => {
-                if (emb.fecha.getTime() < maxPreparacion) {
-                    validaciones.push({
-                        tipo: 'warning',
-                        mensaje: `⚠️ Fecha de embalaje (${emb.fecha.toLocaleString('es-CL')}) es anterior a la última preparación. Esto generará KPI negativo.`,
-                        elemento: emb.elemento
-                    });
-                }
-            });
-        }
-        
-        // Validación 2: Envío debe ser después de embalaje (mismo bulto)
-        fechasEmbalaje.forEach((emb, index) => {
-            const envioMismoBulto = fechasEnvio[index];
-            if (envioMismoBulto && envioMismoBulto.fecha.getTime() < emb.fecha.getTime()) {
-                validaciones.push({
-                    tipo: 'error',
-                    mensaje: `❌ Fecha de envío (${envioMismoBulto.fecha.toLocaleString('es-CL')}) es anterior al embalaje del mismo bulto. Esto es inconsistente.`,
-                    elemento: envioMismoBulto.elemento
-                });
-            }
-        });
-        
-        // Validación 3: Entrega debe ser después de envío (mismo bulto)
-        fechasEnvio.forEach((env, index) => {
-            const entregaMismoBulto = fechasEntrega[index];
-            if (entregaMismoBulto && entregaMismoBulto.fecha.getTime() < env.fecha.getTime()) {
-                validaciones.push({
-                    tipo: 'error',
-                    mensaje: `❌ Fecha de entrega (${entregaMismoBulto.fecha.toLocaleString('es-CL')}) es anterior al envío del mismo bulto. Esto es inconsistente.`,
-                    elemento: entregaMismoBulto.elemento
-                });
-            }
-        });
-        
-        // Mostrar validaciones
-        if (validaciones.length > 0) {
-            listaValidaciones.innerHTML = '';
-            validaciones.forEach(v => {
-                const li = document.createElement('li');
-                li.textContent = v.mensaje;
-                li.className = v.tipo === 'error' ? 'text-danger' : 'text-warning';
-                listaValidaciones.appendChild(li);
-                
-                // Resaltar campo con problema
-                if (v.elemento) {
-                    v.elemento.style.borderColor = v.tipo === 'error' ? '#dc3545' : '#ffc107';
-                    v.elemento.style.borderWidth = '2px';
-                }
-            });
-            alertValidacion.style.display = 'block';
-            alertValidacion.className = validaciones.some(v => v.tipo === 'error') ? 
-                'alert alert-danger mt-3' : 'alert alert-warning mt-3';
-        } else {
-            alertValidacion.style.display = 'none';
-            // Limpiar estilos de campos
-            document.querySelectorAll('[name*="-fecha_"]').forEach(input => {
-                input.style.borderColor = '';
-                input.style.borderWidth = '';
-            });
-        }
-    }
-    
-    // Ejecutar validación al cambiar cualquier fecha
-    document.querySelectorAll('[name*="-fecha_"]').forEach(input => {
-        input.addEventListener('change', validarFechas);
-        input.addEventListener('blur', validarFechas);
-    });
-    
-    // Validar al cargar la página
-    validarFechas();
-    
-    // Advertencia al enviar formulario si hay errores
-    document.getElementById('formSolicitud').addEventListener('submit', function(e) {
-        const tieneErrores = alertValidacion.style.display !== 'none' && 
-                            alertValidacion.classList.contains('alert-danger');
-        
-        if (tieneErrores) {
-            if (!confirm('⚠️ Hay inconsistencias en las fechas que pueden afectar los KPIs.\n\n¿Deseas guardar de todas formas?')) {
-                e.preventDefault();
-            }
-        }
-    });
-});
-
-// ============================================================
-// AGREGAR/ELIMINAR LÍNEAS DE PRODUCTOS EN EDICIÓN AVANZADA
+// LÓGICA EDICIÓN AVANZADA Y KPIs
 // ============================================================
 document.addEventListener('DOMContentLoaded', function() {
     const btnAgregarEdicion = document.getElementById('btnAgregarLineaEdicion');
     const tbodyEdicion = document.getElementById('detalle-rows-edicion');
     const templateEdicion = document.querySelector('#empty-form-template-edicion tr');
     const totalFormsInputEdicion = document.getElementById('id_detalles-TOTAL_FORMS');
-    const maxForms = 45;
 
-    if (!btnAgregarEdicion || !tbodyEdicion || !templateEdicion || !totalFormsInputEdicion) return;
-
-    console.log('🔧 Sistema de edición avanzada de productos inicializado');
-
-    // Función para buscar código en stock (versión simplificada para edición)
-    function buscarCodigoEnStockEdicion(codigoInput) {
-        const codigo = codigoInput.value.trim().toUpperCase();
-        if (!codigo || codigo.length < 3) return;
-
-        const row = codigoInput.closest('tr');
-        const descripcionInput = row.querySelector('[name*="descripcion"]');
-        const bodegaSelect = row.querySelector('[name*="bodega"]');
-        
-        console.log('🔍 Buscando código en edición:', codigo);
-
-        fetch('/solicitudes/api/buscar-codigo/?codigo=' + encodeURIComponent(codigo))
-            .then(response => response.json())
-            .then(data => {
-                console.log('📦 Respuesta:', data);
-                
-                if (data.success) {
-                    // Autocompletar descripción
-                    if (descripcionInput && !descripcionInput.value) {
-                        descripcionInput.value = data.descripcion || '';
-                    }
-                    
-                    // Actualizar opciones de bodega si hay stock
-                    if (data.bodegas && data.bodegas.length > 0 && bodegaSelect) {
-                        const emptyOption = bodegaSelect.querySelector('option[value=""]');
-                        const currentValue = bodegaSelect.value;
-                        
-                        // Limpiar y reconstruir opciones
-                        bodegaSelect.innerHTML = '';
-                        if (emptyOption) {
-                            bodegaSelect.appendChild(emptyOption.cloneNode(true));
-                        }
-                        
-                        data.bodegas.forEach(b => {
-                            const option = new Option(
-                                `${b.codigo_bodega} · ${b.nombre_bodega} (Stock: ${b.stock_disponible})`, 
-                                b.codigo_bodega
-                            );
-                            bodegaSelect.add(option);
-                        });
-                        
-                        // Mantener selección previa si es válida, sino seleccionar primera con stock
-                        if (currentValue && data.bodegas.some(b => b.codigo_bodega === currentValue)) {
-                            bodegaSelect.value = currentValue;
-                        } else if (data.bodegas.length === 1) {
-                            bodegaSelect.value = data.bodegas[0].codigo_bodega;
-                        }
-                    }
-                }
-            })
-            .catch(error => console.error('Error:', error));
+    if (btnAgregarEdicion && tbodyEdicion && templateEdicion && totalFormsInputEdicion) {
+        btnAgregarEdicion.addEventListener('click', function() {
+            let total = parseInt(totalFormsInputEdicion.value || '0', 10);
+            const newRow = templateEdicion.cloneNode(true);
+            newRow.innerHTML = newRow.innerHTML.replace(/__prefix__/g, total);
+            tbodyEdicion.appendChild(newRow);
+            totalFormsInputEdicion.value = total + 1;
+            
+            // Re-inicializar Flatpickr en nuevos campos
+            if (window.flatpickr) {
+                window.flatpickr(newRow.querySelectorAll("input[type='datetime-local']"), {
+                    enableTime: true,
+                    dateFormat: "Y-m-d H:i",
+                    altInput: true,
+                    altFormat: "d/m/Y H:i",
+                    time_24hr: true,
+                    locale: "es",
+                    allowInput: true
+                });
+            }
+        });
     }
 
-    // Agregar eventos a inputs existentes
-    tbodyEdicion.querySelectorAll('[name*="codigo"]').forEach(input => {
-        input.addEventListener('blur', function() {
-            buscarCodigoEnStockEdicion(this);
-        });
-        input.addEventListener('input', function() {
-            this.value = this.value.toUpperCase();
-        });
-    });
+    // Validación básica de fechas
+    const alertValidacion = document.getElementById('alertValidacion');
+    const listaValidaciones = document.getElementById('listaValidaciones');
+    
+    function validarSecuencia() {
+        if (!alertValidacion) return;
+        const fechasPreparacion = Array.from(document.querySelectorAll('[name*="-fecha_preparacion"]'))
+            .map(i => i.value ? new Date(i.value) : null).filter(d => d);
+        const fechasEmbalaje = Array.from(document.querySelectorAll('[name*="-fecha_embalaje"]'))
+            .map(i => i.value ? new Date(i.value) : null).filter(d => d);
 
-    // Agregar nueva línea
-    btnAgregarEdicion.addEventListener('click', function() {
-        let total = parseInt(totalFormsInputEdicion.value || '0', 10);
-        if (total >= maxForms) {
-            alert('Ya alcanzaste el máximo de 45 líneas de productos.');
-            return;
+        if (fechasPreparacion.length && fechasEmbalaje.length) {
+            const maxPrep = Math.max(...fechasPreparacion.map(d => d.getTime()));
+            const minEmb = Math.min(...fechasEmbalaje.map(d => d.getTime()));
+            
+            if (minEmb < maxPrep) {
+                listaValidaciones.innerHTML = '<li class="text-warning">⚠️ Hay bultos con fecha de embalaje anterior a la preparación.</li>';
+                alertValidacion.style.display = 'block';
+            } else {
+                alertValidacion.style.display = 'none';
+            }
         }
+    }
 
-        const newRow = templateEdicion.cloneNode(true);
-        let html = newRow.innerHTML.replace(/__prefix__/g, total);
-        newRow.innerHTML = html;
-        
-        // Agregar eventos a los nuevos inputs
-        const codigoInput = newRow.querySelector('[name*="codigo"]');
-        const bodegaSelect = newRow.querySelector('[name*="bodega"]');
-        
-        if (codigoInput) {
-            codigoInput.addEventListener('blur', function() {
-                buscarCodigoEnStockEdicion(this);
-            });
-            codigoInput.addEventListener('input', function() {
-                this.value = this.value.toUpperCase();
-            });
-        }
-        
-        if (bodegaSelect) {
-            bodegaSelect.addEventListener('change', function() {
-                this.style.borderColor = '';
-                this.style.borderWidth = '';
-            });
-        }
-        
-        tbodyEdicion.appendChild(newRow);
-        totalFormsInputEdicion.value = total + 1;
-        
-        console.log('➕ Nueva línea agregada. Total:', total + 1);
-        
-        // Enfocar el nuevo input de código
-        if (codigoInput) {
-            codigoInput.focus();
-        }
+    document.querySelectorAll('input[type="datetime-local"]').forEach(i => {
+        i.addEventListener('change', validarSecuencia);
     });
 });
 </script>
 {% endif %}
 
+<script>
+// ============================================================
+// INICIALIZACIÓN GLOBAL DE FLATPICKR
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.flatpickr) {
+        window.flatpickr("input[type='datetime-local']", {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            altInput: true,
+            altFormat: "d/m/Y H:i",
+            time_24hr: true,
+            locale: "es",
+            allowInput: true,
+        });
+    }
+});
+</script>
 {% endblock %}

@@ -1,5 +1,5 @@
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import inlineformset_factory, modelformset_factory
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 import pytz
@@ -387,8 +387,7 @@ class BultoEdicionAdminForm(forms.ModelForm):
         return instance
 
 
-BultoEdicionFormSet = inlineformset_factory(
-    Solicitud,
+BultoEdicionFormSet = modelformset_factory(
     Bulto,
     form=BultoEdicionAdminForm,
     extra=0,  # No agregar bultos extras en edición

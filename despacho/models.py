@@ -8,8 +8,9 @@ from configuracion.models import EstadoWorkflow, TransporteConfig
 
 class Bulto(models.Model):
     """
-    Representa un bulto físico (caja/pallet) asociado a una sola solicitud.
-    Una solicitud puede tener múltiples bultos, pero un bulto solo pertenece a una solicitud.
+    Representa un bulto físico (caja/pallet). 
+    Puede estar asociado a una sola solicitud (cabezal) o ser multi-solicitud 
+    (relación mediante SolicitudDetalle).
     """
 
     TIPOS = [
@@ -52,7 +53,9 @@ class Bulto(models.Model):
     )
     solicitud = models.ForeignKey(
         Solicitud,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='bultos',
         verbose_name='Solicitud'
     )

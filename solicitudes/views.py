@@ -11,6 +11,7 @@ import json
 from core.decorators import role_required
 from core.models import Bodega
 from configuracion.models import EstadoWorkflow, TipoSolicitud
+from despacho.models import Bulto
 from .forms import (
     SolicitudForm, 
     SolicitudDetalleFormSet, 
@@ -32,7 +33,6 @@ def lista_solicitudes(request):
     
     # Importaciones necesarias
     from django.db.models import Prefetch, Exists, OuterRef
-    from despacho.models import Bulto
     from solicitudes.models import SolicitudDetalle
     from configuracion.models import EstadoWorkflow, TransporteConfig
     
@@ -365,13 +365,21 @@ def detalle_solicitud(request, pk):
 
     detalles = solicitud.detalles.all()
     
+    # Buscar bultos asociados (directamente o por productos)
+    bultos_ids = detalles.filter(bulto__isnull=False).values_list('bulto_id', flat=True).distinct()
+    bultos = Bulto.objects.filter(Q(solicitud=solicitud) | Q(id__in=bultos_ids)).distinct()
+    
     # Filtrar detalles si es usuario de bodega
-    # Excluir bodega='013' que es solo despacho y no requiere preparación
     if request.user.es_bodega():
         bodegas_usuario = request.user.get_bodegas_codigos()
         detalles = detalles.filter(bodega__in=bodegas_usuario).exclude(bodega='013')
         
-    return render(request, 'solicitudes/detalle.html', {'solicitud': solicitud, 'detalles': detalles})
+    context = {
+        'solicitud': solicitud, 
+        'detalles': detalles,
+        'bultos_asociados': bultos  # Pasamos bultos explícitamente para el template
+    }
+    return render(request, 'solicitudes/detalle.html', context)
 
 
 @login_required
@@ -461,9 +469,12 @@ def detalle_solicitud_ajax(request, pk):
                 'estado_bodega': 'N/A'
             })
         
-        # Preparar datos de bultos
+        # Preparar datos de bultos asociados (directamente o por detalles)
+        bultos_ids = solicitud.detalles.filter(bulto__isnull=False).values_list('bulto_id', flat=True).distinct()
+        queryset_bultos = Bulto.objects.filter(Q(solicitud=solicitud) | Q(id__in=bultos_ids)).distinct()
+        
         bultos_data = []
-        for bulto in solicitud.bultos.all():
+        for bulto in queryset_bultos:
             codigos_en_bulto = [det.codigo for det in bulto.detalles.all()]
             bultos_data.append({
                 'id': bulto.id,
@@ -586,6 +597,10 @@ def editar_solicitud(request, pk):
     """
     solicitud = get_object_or_404(Solicitud, pk=pk)
     estado_anterior = solicitud.estado  # Guardar estado antes de editar
+
+    # Buscar TODOS los bultos asociados (directamente o por detalles)
+    bultos_ids = solicitud.detalles.filter(bulto__isnull=False).values_list('bulto_id', flat=True).distinct()
+    queryset_bultos = Bulto.objects.filter(Q(solicitud=solicitud) | Q(id__in=bultos_ids)).distinct()
     
     if request.method == 'POST':
         print(f"\n{'='*60}")
@@ -594,7 +609,7 @@ def editar_solicitud(request, pk):
         
         form = SolicitudEdicionAdminForm(request.POST, instance=solicitud)
         formset_detalles = SolicitudDetalleEdicionFormSet(request.POST, instance=solicitud, prefix='detalles')
-        formset_bultos = BultoEdicionFormSet(request.POST, instance=solicitud, prefix='bultos')
+        formset_bultos = BultoEdicionFormSet(request.POST, prefix='bultos', queryset=queryset_bultos)
         
         print(f"✅ Form válido: {form.is_valid()}")
         print(f"✅ Formset detalles válido: {formset_detalles.is_valid()}")
@@ -620,7 +635,6 @@ def editar_solicitud(request, pk):
             
             # Si el estado cambió a 'despachado', finalizar bultos automáticamente (si los tiene)
             if nuevo_estado == 'despachado' and estado_anterior != 'despachado':
-                from despacho.models import Bulto
                 from django.utils import timezone
                 from .services import descontar_stock_despachado
                 import logging
@@ -635,7 +649,8 @@ def editar_solicitud(request, pk):
                 print(f"   Afecta stock: {solicitud.afecta_stock}")
                 
                 # BUSCAR TODOS los bultos asociados a esta solicitud (si los tiene)
-                bultos_asociados = Bulto.objects.filter(solicitud=solicitud)
+                # Ahora usando el mismo QuerySet inteligente para la finalización automática
+                bultos_asociados = queryset_bultos
                 total_bultos = bultos_asociados.count()
                 
                 print(f"\n📦 ACTUALIZACIÓN DE BULTOS:")
@@ -718,7 +733,7 @@ def editar_solicitud(request, pk):
     else:
         form = SolicitudEdicionAdminForm(instance=solicitud)
         formset_detalles = SolicitudDetalleEdicionFormSet(instance=solicitud, prefix='detalles')
-        formset_bultos = BultoEdicionFormSet(instance=solicitud, prefix='bultos')
+        formset_bultos = BultoEdicionFormSet(prefix='bultos', queryset=queryset_bultos)
     
     bodegas_activas = Bodega.objects.filter(activa=True).order_by('codigo')
     
@@ -801,7 +816,6 @@ def cambiar_estado_solicitud(request, pk):
         
         # SOLO procesar si cambió el estado (evitar procesar múltiples veces)
         if estado_anterior != 'despachado':
-            from despacho.models import Bulto
             
             # BUSCAR TODOS los bultos asociados a esta solicitud
             bultos_asociados = Bulto.objects.filter(solicitud=solicitud)

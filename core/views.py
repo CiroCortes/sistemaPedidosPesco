@@ -246,38 +246,51 @@ def dashboard(request):
         
         bodegas_usuario = user.get_bodegas_codigos()
         if bodegas_usuario:
-            # Filtrar solo solicitudes que tienen detalles con bodegas asignadas al usuario
-            detalles_pendientes = SolicitudDetalle.objects.filter(
+            # QuerySet base para esta bodega
+            detalles_pendientes_qs = SolicitudDetalle.objects.filter(
                 solicitud=OuterRef('pk'),
                 bodega__in=bodegas_usuario,
                 estado_bodega='pendiente'
-            ).exclude(bodega='013')  # Bodega 013 es solo despacho
+            ).exclude(bodega='013')
             
-            solicitudes_pendientes = list(
+            queryset_bodega = (
                 Solicitud.objects
                 .filter(estado='pendiente')
-                .annotate(tiene_pendientes=Exists(detalles_pendientes))
+                .annotate(tiene_pendientes=Exists(detalles_pendientes_qs))
                 .filter(tiene_pendientes=True)
+            )
+            
+            # Conteo total real para la tarjeta
+            total_pendientes = queryset_bodega.count()
+            
+            # Listado limitado para el dashboard (15 más antiguos)
+            solicitudes_pendientes = list(
+                queryset_bodega
                 .select_related('solicitante')
                 .order_by('fecha_solicitud', 'hora_solicitud')[:15]
             )
         else:
-            # Si no tiene bodegas asignadas, no ver nada
+            total_pendientes = 0
             solicitudes_pendientes = []
         
         urgentes = sum(1 for s in solicitudes_pendientes if s.urgente)
         
         context.update({
-            'solicitudes_pendientes': len(solicitudes_pendientes),
+            'solicitudes_pendientes': total_pendientes,
             'solicitudes_urgentes': urgentes,
             'listado_solicitudes': solicitudes_pendientes,
         })
     
     elif user.es_despacho():
-        # Despacho solo ve en_despacho - Optimizado: 1 query en lugar de 3
+        # Despacho solo ve en_despacho
+        queryset_despacho = Solicitud.objects.filter(estado='en_despacho')
+        
+        # Conteo total real para la tarjeta
+        total_despacho = queryset_despacho.count()
+        
+        # Listado limitado para el dashboard (para no sobrecargar)
         solicitudes_en_despacho = list(
-            Solicitud.objects
-            .filter(estado='en_despacho')
+            queryset_despacho
             .select_related('solicitante')
             .order_by('fecha_solicitud', 'hora_solicitud')[:15]
         )
@@ -285,7 +298,7 @@ def dashboard(request):
         urgentes = sum(1 for s in solicitudes_en_despacho if s.urgente)
         
         context.update({
-            'solicitudes_en_despacho': len(solicitudes_en_despacho),
+            'solicitudes_en_despacho': total_despacho,
             'solicitudes_urgentes': urgentes,
             'listado_solicitudes': solicitudes_en_despacho,
         })
