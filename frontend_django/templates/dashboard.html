@@ -243,15 +243,15 @@
                             Lead Time Preparación
                         </h6>
                         <h3 class="mb-1 text-success">
-                            {{ indicadores.lead_time_preparacion.promedio_dias|floatformat:1 }} días
+                            {{ indicadores.lead_time_preparacion.promedio_dias|floatformat:1 }} días laborales
                         </h3>
                         <small class="text-muted">
                             ({{ indicadores.lead_time_preparacion.promedio_horas|floatformat:1 }} horas)
                         </small>
                         <div class="mt-2">
                             <small class="text-muted">
-                                Mín: {{ indicadores.lead_time_preparacion.min_dias|floatformat:1 }}d | 
-                                Máx: {{ indicadores.lead_time_preparacion.max_dias|floatformat:1 }}d
+                                Mín: {{ indicadores.lead_time_preparacion.min_dias|floatformat:1 }} dl | 
+                                Máx: {{ indicadores.lead_time_preparacion.max_dias|floatformat:1 }} dl
                             </small>
                         </div>
                         <div class="mt-1">
@@ -271,15 +271,15 @@
                             Lead Time Embalaje
                         </h6>
                         <h3 class="mb-1 text-info">
-                            {{ indicadores.lead_time_embalaje.promedio_dias|floatformat:1 }} días
+                            {{ indicadores.lead_time_embalaje.promedio_dias|floatformat:1 }} días laborales
                         </h3>
                         <small class="text-muted">
                             ({{ indicadores.lead_time_embalaje.promedio_horas|floatformat:1 }} horas)
                         </small>
                         <div class="mt-2">
                             <small class="text-muted">
-                                Mín: {{ indicadores.lead_time_embalaje.min_dias|floatformat:1 }}d | 
-                                Máx: {{ indicadores.lead_time_embalaje.max_dias|floatformat:1 }}d
+                                Mín: {{ indicadores.lead_time_embalaje.min_dias|floatformat:1 }} dl | 
+                                Máx: {{ indicadores.lead_time_embalaje.max_dias|floatformat:1 }} dl
                             </small>
                         </div>
                         <div class="mt-1">
@@ -299,15 +299,15 @@
                             Lead Time Total
                         </h6>
                         <h3 class="mb-1 text-primary">
-                            {{ indicadores.lead_time_total.promedio_dias|floatformat:1 }} días
+                            {{ indicadores.lead_time_total.promedio_dias|floatformat:1 }} días laborales
                         </h3>
                         <small class="text-muted">
                             ({{ indicadores.lead_time_total.promedio_horas|floatformat:1 }} horas)
                         </small>
                         <div class="mt-2">
                             <small class="text-muted">
-                                Mín: {{ indicadores.lead_time_total.min_dias|floatformat:1 }}d | 
-                                Máx: {{ indicadores.lead_time_total.max_dias|floatformat:1 }}d
+                                Mín: {{ indicadores.lead_time_total.min_dias|floatformat:1 }} dl | 
+                                Máx: {{ indicadores.lead_time_total.max_dias|floatformat:1 }} dl
                             </small>
                         </div>
                         <div class="mt-1">
@@ -331,7 +331,9 @@
                         </h6>
                     </div>
                     <div class="card-body">
-                        <canvas id="chartLeadTimes" height="80"></canvas>
+                        <div style="position:relative; height:300px; width:100%;">
+                            <canvas id="chartLeadTimes"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -356,7 +358,7 @@
                                         <th>Bodega</th>
                                         <th class="text-center">Lead Time Promedio</th>
                                         <th>En Horas</th>
-                                        <th>En Días</th>
+                                        <th>En Días Laborales</th>
                                         <th class="text-center">Operaciones</th>
                                     </tr>
                                 </thead>
@@ -377,7 +379,7 @@
                                             {% endif %}
                                         </td>
                                         <td>{% if item.cantidad_operaciones > 0 %}{{ item.lead_time_horas|floatformat:1 }} horas{% else %}<span class="text-muted">0.0 horas</span>{% endif %}</td>
-                                        <td>{% if item.cantidad_operaciones > 0 %}{{ item.lead_time_dias|floatformat:2 }} días{% else %}<span class="text-muted">0.00 días</span>{% endif %}</td>
+                                        <td>{% if item.cantidad_operaciones > 0 %}{{ item.lead_time_dias|floatformat:2 }} días laborales{% else %}<span class="text-muted">0.00 días laborales</span>{% endif %}</td>
                                         <td class="text-center"><span class="badge {% if item.cantidad_operaciones > 0 %}bg-info{% else %}bg-secondary{% endif %}">{{ item.cantidad_operaciones }}</span></td>
                                     </tr>
                                     {% endfor %}
@@ -406,7 +408,9 @@
                         </h6>
                     </div>
                     <div class="card-body">
-                        <canvas id="chartOperacionesCliente" height="80"></canvas>
+                        <div style="position:relative; height:320px; width:100%;">
+                            <canvas id="chartOperacionesCliente"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -420,7 +424,9 @@
                         </h6>
                     </div>
                     <div class="card-body">
-                        <canvas id="chartKilosCliente" height="80"></canvas>
+                        <div style="position:relative; height:320px; width:100%;">
+                            <canvas id="chartKilosCliente"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -709,7 +715,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    maintainAspectRatio: false,
                     animation: animacionConfig,
                     interaction: {
                         intersect: false,
@@ -742,7 +748,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Lead Time (horas)'
+                                text: 'Lead Time (horas laborales)'
                             },
                             ticks: {
                                 callback: function(value) {
@@ -807,13 +813,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     options: {
                         responsive: true,
-                        maintainAspectRatio: true,
+                        maintainAspectRatio: false,
                         scales: {
                             y: {
                                 beginAtZero: true,
                                 title: {
                                     display: true,
-                                    text: 'Lead Time (horas)'
+                                    text: 'Lead Time (horas laborales)'
                                 }
                             }
                         },
@@ -887,8 +893,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     options: {
                         responsive: true,
-                        maintainAspectRatio: true,
-                        aspectRatio: 1.5,
+                        maintainAspectRatio: false,
                         animation: {
                             animateRotate: true,
                             animateScale: true,
@@ -1006,8 +1011,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     options: {
                         responsive: true,
-                        maintainAspectRatio: true,
-                        aspectRatio: 1.5,
+                        maintainAspectRatio: false,
                         animation: {
                             animateRotate: true,
                             animateScale: true,
@@ -1066,6 +1070,31 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     } else {
         console.warn('Chart.js no está disponible. Los gráficos no se mostrarán.');
+    }
+
+    // ✅ ResizeObserver: fuerza que todos los gráficos de Chart.js se redimensionen
+    // correctamente cuando el contenedor crece después de haber sido achicado.
+    if (typeof ResizeObserver !== 'undefined') {
+        const chartContainers = document.querySelectorAll('canvas[id^="chart"]');
+        chartContainers.forEach(function(canvas) {
+            const parent = canvas.parentElement;
+            if (parent) {
+                new ResizeObserver(function() {
+                    // Buscar la instancia de Chart asociada al canvas
+                    const chartInstance = Chart.getChart(canvas);
+                    if (chartInstance) {
+                        chartInstance.resize();
+                    }
+                }).observe(parent);
+            }
+        });
+    } else {
+        // Fallback para navegadores sin ResizeObserver
+        window.addEventListener('resize', function() {
+            Chart.instances && Object.values(Chart.instances).forEach(function(chart) {
+                chart.resize();
+            });
+        });
     }
 });
 </script>

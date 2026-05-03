@@ -201,13 +201,13 @@
                         <th>Transacción SAP</th>
                         <th>Fecha Embalaje</th>
                         <th>Hora Embalaje</th>
+                        <th>N° Bulto</th>
                         <th>N° Guía</th>
                         <th>Transporte</th>
                         <th>N° OT</th>
                         <th>Estado</th>
                         <th>Fecha Despacho</th>
                         <th>Hora Despacho</th>
-                        <th>N° Bulto</th>
                     </tr>
                     <tr class="filtros-header">
                         <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="0" placeholder="Filtrar..."></th>
@@ -230,7 +230,6 @@
                         <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="17" placeholder="Filtrar..."></th>
                         <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="18" placeholder="Filtrar..."></th>
                         <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="19" placeholder="Filtrar..."></th>
-                        <th><input type="text" class="form-control form-control-sm filtro-columna" data-columna="20" placeholder="Filtrar..."></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -250,13 +249,13 @@
                         <td>{{ registro.numero_transaccion_sap|default:"-" }}</td>
                         <td>{{ registro.fecha_embalaje|default:"-" }}</td>
                         <td>{{ registro.hora_embalaje|default:"-" }}</td>
+                        <td>{{ registro.numero_bulto|default:"-" }}</td>
                         <td>{{ registro.numero_guia|default:"-" }}</td>
                         <td>{{ registro.transporte|default:"-" }}</td>
                         <td>{{ registro.numero_ot|default:"-" }}</td>
                         <td>{{ registro.estado_linea|default:"Pendiente" }}</td>
                         <td>{{ registro.fecha_despacho|default:"-" }}</td>
                         <td>{{ registro.hora_despacho|default:"-" }}</td>
-                        <td>{{ registro.numero_bulto|default:"-" }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

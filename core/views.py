@@ -57,7 +57,10 @@ def _lead_horas_validas(delta_horas):
 def calcular_horas_laborales(fecha_inicio, fecha_fin):
     """
     Calcula las horas laborales entre dos fechas.
-    Considera solo días hábiles (lunes a viernes) y 8 horas por día.
+    Jornada empresa:
+    - Lunes a jueves: 08:00 a 17:45
+    - Viernes: 08:00 a 13:00
+    - Sábado y domingo: no laboral
     
     Args:
         fecha_inicio: datetime - Fecha de inicio
@@ -79,36 +82,39 @@ def calcular_horas_laborales(fecha_inicio, fecha_fin):
     if fecha_fin < fecha_inicio:
         return 0
     
-    total_horas = 0
-    fecha_actual = fecha_inicio.replace(hour=0, minute=0, second=0, microsecond=0)
-    fecha_limite = fecha_fin.replace(hour=23, minute=59, second=59, microsecond=999999)
-    
-    while fecha_actual <= fecha_limite:
-        # Solo contar días laborales (lunes=0 a viernes=4)
-        if fecha_actual.weekday() < 5:  # 0-4 = lunes a viernes
-            # Si es el primer día
-            if fecha_actual.date() == fecha_inicio.date():
-                # Calcular desde la hora de inicio hasta el fin del día (máx 8 horas)
-                hora_inicio = fecha_inicio.hour + fecha_inicio.minute / 60 + fecha_inicio.second / 3600
-                # Si termina el mismo día
-                if fecha_actual.date() == fecha_fin.date():
-                    hora_fin = fecha_fin.hour + fecha_fin.minute / 60 + fecha_fin.second / 3600
-                    total_horas += min(8, hora_fin - hora_inicio)
-                else:
-                    # Contar desde hora_inicio hasta fin de jornada (8 horas max desde inicio del día laboral)
-                    total_horas += min(8, 24 - hora_inicio)
-            # Si es el último día (pero no el primero)
-            elif fecha_actual.date() == fecha_fin.date():
-                hora_fin = fecha_fin.hour + fecha_fin.minute / 60 + fecha_fin.second / 3600
-                total_horas += min(8, hora_fin)
-            # Días intermedios: 8 horas laborales
-            else:
-                total_horas += 8
-        
-        # Avanzar al siguiente día
-        fecha_actual += timedelta(days=1)
-    
-    return total_horas
+    total_segundos = 0.0
+
+    dia_cursor = fecha_inicio.date()
+    dia_fin = fecha_fin.date()
+
+    while dia_cursor <= dia_fin:
+        # Construir límites de jornada según día de semana
+        # weekday(): lunes=0 ... domingo=6
+        weekday = dia_cursor.weekday()
+        if weekday <= 3:  # lunes a jueves
+            inicio_jornada = datetime.combine(dia_cursor, dt_time(8, 0, 0))
+            fin_jornada = datetime.combine(dia_cursor, dt_time(17, 45, 0))
+        elif weekday == 4:  # viernes
+            inicio_jornada = datetime.combine(dia_cursor, dt_time(8, 0, 0))
+            fin_jornada = datetime.combine(dia_cursor, dt_time(13, 0, 0))
+        else:  # sábado/domingo
+            dia_cursor += timedelta(days=1)
+            continue
+
+        # Mantener consistencia de timezone con los datetimes de entrada
+        if timezone.is_aware(fecha_inicio):
+            inicio_jornada = timezone.make_aware(inicio_jornada, timezone.get_current_timezone())
+            fin_jornada = timezone.make_aware(fin_jornada, timezone.get_current_timezone())
+
+        tramo_inicio = max(fecha_inicio, inicio_jornada)
+        tramo_fin = min(fecha_fin, fin_jornada)
+
+        if tramo_fin > tramo_inicio:
+            total_segundos += (tramo_fin - tramo_inicio).total_seconds()
+
+        dia_cursor += timedelta(days=1)
+
+    return total_segundos / 3600
 
 
 def login_view(request):
@@ -361,8 +367,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     BODEGAS_DASHBOARD = ['013-01', '013-03', '013-05', '013-08', '013-09', '013-PP', '013-PS']
     
     # Base queryset para solicitudes del período.
-    # Filtramos por fecha_despachado para capturar solicitudes antiguas despachadas
-    # dentro del período, independientemente de cuándo fueron creadas.
+    # El despacho oficial para KPI es Solicitud.fecha_despachado.
     solicitudes_base = Solicitud.objects.filter(
         fecha_despachado__gte=fecha_inicio,
         estado='despachado'
@@ -432,27 +437,54 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # Todos los datos ya están precargados en memoria
     # ============================================================================
     
+    # Fechas reales por solicitud (capturadas por usuarios):
+    # - Preparación real: MAX(detalle.fecha_preparacion)
+    # - Embalaje real: MAX(bulto.fecha_embalaje) [sin cancelados]
+    # - Despacho oficial: solicitud.fecha_despachado
+    fechas_reales_por_solicitud = {}
+    for solicitud in solicitudes_list:
+        fechas_prep = [
+            d.fecha_preparacion
+            for d in solicitud.detalles.all()
+            if d.fecha_preparacion
+        ]
+        fecha_fin_prep_real = max(fechas_prep) if fechas_prep else None
+
+        bultos_validos = [
+            b for b in solicitud.bultos.all()
+            if b.estado != 'cancelado'
+        ]
+        fechas_emb = [b.fecha_embalaje for b in bultos_validos if b.fecha_embalaje]
+        fecha_fin_emb_real = max(fechas_emb) if fechas_emb else None
+
+        fecha_fin_despacho_real = solicitud.fecha_despachado
+
+        fechas_reales_por_solicitud[solicitud.id] = {
+            'prep_fin': fecha_fin_prep_real,
+            'emb_fin': fecha_fin_emb_real,
+            'desp_fin': fecha_fin_despacho_real,
+        }
+
     # 1. LEAD TIME DE PREPARACIÓN
-    # Mide: fecha_en_despacho (momento en que el admin movió a "en_despacho") − inicio_efectivo
-    # Semántica: cuánto tardó la solicitud en pasar de creada a lista para embalar.
+    # Mide: fin_preparación_real − inicio_efectivo en HORAS LABORALES.
+    # Semántica: tiempo operativo real hasta terminar preparación.
     
     lead_times_prep = []
     lead_times_por_semana = {}
 
     for solicitud in solicitudes_list:
-        fecha_fin_prep = solicitud.fecha_en_despacho
+        fecha_fin_prep = fechas_reales_por_solicitud[solicitud.id]['prep_fin']
         if not fecha_fin_prep:
             continue
         inicio = inicio_efectivo_lead_time(solicitud)
         if not inicio:
             continue
-        delta = fecha_fin_prep - inicio
-        horas = delta.total_seconds() / 3600
+        horas = calcular_horas_laborales(inicio, fecha_fin_prep)
         if not _lead_horas_validas(horas):
             continue
         lead_times_prep.append(horas)
 
-        # Agrupar por SEMANA ISO (referencia: fecha en que entró a despacho)
+        # Agrupar por SEMANA ISO (referencia: fecha real de término de preparación)
         fecha_ref = fecha_fin_prep.date()
         iso_year, iso_week, _ = fecha_ref.isocalendar()
         semana_key = f"{iso_year}-W{iso_week:02d}"
@@ -757,19 +789,15 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         })
     
     # 2. LEAD TIME DE EMBALAJE
-    # Mide: fecha_listo_despacho − fecha_en_despacho
-    # Semántica: tiempo del proceso de embalaje/consolidación hasta quedar listo.
-    # Si el delta es negativo por datos inconsistentes (admin registró prep después de
-    # embalaje), se trata como 0 h para mantener el conteo igual al de los otros KPIs.
+    # Mide: fin_embalaje_real − fin_preparación_real en HORAS LABORALES.
+    # Semántica: tiempo operativo real de embalaje/consolidación.
     lead_times_emb = []
     for solicitud in solicitudes_list:
-        inicio_emb = solicitud.fecha_en_despacho
-        fin_emb = solicitud.fecha_listo_despacho
+        inicio_emb = fechas_reales_por_solicitud[solicitud.id]['prep_fin']
+        fin_emb = fechas_reales_por_solicitud[solicitud.id]['emb_fin']
         if not inicio_emb or not fin_emb:
             continue
-        delta_h = (fin_emb - inicio_emb).total_seconds() / 3600
-        # Clamp a 0 en caso de inconsistencia de datos; excluir solo valores absurdamente grandes
-        horas = max(0.0, delta_h)
+        horas = calcular_horas_laborales(inicio_emb, fin_emb)
         if _lead_horas_validas(horas):
             lead_times_emb.append(horas)
 
@@ -778,18 +806,17 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     lt_emb_max = max(lead_times_emb) if lead_times_emb else 0
 
     # 3. LEAD TIME TOTAL (SOLICITUD COMPLETA)
-    # Mide: fecha_despachado − inicio_efectivo
+    # Mide: fin_despacho_real − inicio_efectivo en HORAS LABORALES.
     # Invariante natural: Total ≈ Preparación + Embalaje por solicitud.
     lead_times_total = []
     for solicitud in solicitudes_list:
-        fin_total = solicitud.fecha_despachado
+        fin_total = fechas_reales_por_solicitud[solicitud.id]['desp_fin']
         if not fin_total:
             continue
         inicio = inicio_efectivo_lead_time(solicitud)
         if not inicio:
             continue
-        delta = fin_total - inicio
-        horas = delta.total_seconds() / 3600
+        horas = calcular_horas_laborales(inicio, fin_total)
         if _lead_horas_validas(horas):
             lead_times_total.append(horas)
 
@@ -828,8 +855,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             sol = detalle.solicitud
             inicio = inicio_efectivo_lead_time(sol)
             if inicio:
-                delta = detalle.fecha_preparacion - inicio
-                horas = delta.total_seconds() / 3600
+                horas = calcular_horas_laborales(inicio, detalle.fecha_preparacion)
                 if _lead_horas_validas(horas):
                     lead_times_por_bodega[bodega_codigo]['lead_times_horas'].append(horas)
                     lead_times_por_bodega[bodega_codigo]['cantidad_operaciones'] += 1
@@ -842,7 +868,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         if datos['lead_times_horas']:
             # Calcular promedio si hay datos
             horas_prom = sum(datos['lead_times_horas']) / len(datos['lead_times_horas'])
-            dias_prom = horas_prom / 24  # Convertir a días
+            dias_prom = horas_prom / 8  # Convertir a días laborales (8h = 1 día)
             horas_min = min(datos['lead_times_horas'])
             horas_max = max(datos['lead_times_horas'])
         else:
@@ -1001,31 +1027,31 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     result = {
         'lead_time_preparacion': {
             'promedio_horas': lt_prep_promedio,
-            'promedio_dias': lt_prep_promedio / 24,
+            'promedio_dias': lt_prep_promedio / 8,
             'min_horas': lt_prep_min,
-            'min_dias': lt_prep_min / 24,
+            'min_dias': lt_prep_min / 8,
             'max_horas': lt_prep_max,
-            'max_dias': lt_prep_max / 24,
+            'max_dias': lt_prep_max / 8,
             'total_registros': len(lead_times_prep),
             'tendencia_semanal': tendencia_semanal_prep,
             'tendencia_semanal_json': tendencia_semanal_json
         },
         'lead_time_embalaje': {
             'promedio_horas': lt_emb_promedio,
-            'promedio_dias': lt_emb_promedio / 24,
+            'promedio_dias': lt_emb_promedio / 8,
             'min_horas': lt_emb_min,
-            'min_dias': lt_emb_min / 24,
+            'min_dias': lt_emb_min / 8,
             'max_horas': lt_emb_max,
-            'max_dias': lt_emb_max / 24,
+            'max_dias': lt_emb_max / 8,
             'total_registros': len(lead_times_emb)
         },
         'lead_time_total': {
             'promedio_horas': lt_total_promedio,
-            'promedio_dias': lt_total_promedio / 24,
+            'promedio_dias': lt_total_promedio / 8,
             'min_horas': lt_total_min,
-            'min_dias': lt_total_min / 24,
+            'min_dias': lt_total_min / 8,
             'max_horas': lt_total_max,
-            'max_dias': lt_total_max / 24,
+            'max_dias': lt_total_max / 8,
             'total_registros': len(lead_times_total)
         },
         'lead_time_bodegas': lead_time_bodegas,

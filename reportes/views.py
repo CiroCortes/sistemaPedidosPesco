@@ -13,6 +13,53 @@ from despacho.models import Bulto
 from bodega.models import BodegaTransferencia
 from configuracion.models import TipoSolicitud
 
+# Zona horaria de Chile (UTC-4 en verano, UTC-3 en invierno — pytz lo maneja automáticamente)
+CHILE_TZ = pytz.timezone('America/Santiago')
+UTC_TZ = pytz.utc
+
+
+def utc_to_chile(dt):
+    """
+    Convierte un datetime a hora de Chile (America/Santiago).
+    
+    Supabase/PostgreSQL almacena DateTimeField en UTC.
+    Django puede devolver el valor como:
+      - 'aware'  → tzinfo apunta a UTC  → convertir directamente a Chile
+      - 'naive'  → sin tzinfo            → asumir que es UTC, luego convertir a Chile
+    
+    Retorna None si dt es None o no es un datetime.
+    """
+    if dt is None:
+        return None
+    if not hasattr(dt, 'astimezone'):
+        # Es un date o time, no un datetime — no se puede convertir
+        return dt
+    if timezone.is_aware(dt):
+        return dt.astimezone(CHILE_TZ)
+    else:
+        # Naive datetime proveniente de Supabase → asumir UTC
+        return UTC_TZ.localize(dt).astimezone(CHILE_TZ)
+
+
+def fmt_fecha(dt):
+    """Formatea fecha como dd/mm/YYYY o '' si None."""
+    if dt is None:
+        return ''
+    converted = utc_to_chile(dt)
+    if converted is None:
+        return ''
+    return converted.strftime('%d/%m/%Y')
+
+
+def fmt_hora(dt):
+    """Formatea hora como HH:MM (hora Chile) o '' si None."""
+    if dt is None:
+        return ''
+    converted = utc_to_chile(dt)
+    if converted is None:
+        return ''
+    return converted.strftime('%H:%M')
+
 
 @login_required
 def informe_completo(request):
@@ -158,71 +205,39 @@ def informe_completo(request):
                             # Para diccionarios, no podemos hacer esta verificación
                             pass
                 
-                # Preparar datos del registro
-                # Fechas y horas con formato seguro (convertir a zona horaria de Chile)
-                chile_tz = pytz.timezone('America/Santiago')
-                
-                fecha_ingreso = ''
-                hora_ingreso = ''
-                if solicitud.fecha_solicitud:
-                    fecha_ingreso = solicitud.fecha_solicitud.strftime('%d/%m/%Y')
-                if solicitud.hora_solicitud:
-                    # hora_solicitud es TimeField, ya está en hora local, solo formatear
-                    hora_ingreso = solicitud.hora_solicitud.strftime('%H:%M')
-                
-                fecha_prep = ''
-                hora_prep = ''
+                # Preparar fechas/horas — todos los DateTimeField vienen en UTC desde Supabase.
+                # fmt_fecha() y fmt_hora() convierten correctamente UTC → America/Santiago.
+
+                # fecha_ingreso / hora_ingreso: son DateField + TimeField ya en hora Chile
+                fecha_ingreso = solicitud.fecha_solicitud.strftime('%d/%m/%Y') if solicitud.fecha_solicitud else ''
+                hora_ingreso  = solicitud.hora_solicitud.strftime('%H:%M')     if solicitud.hora_solicitud  else ''
+
+                # fecha_preparacion: DateTimeField en UTC → convertir a Chile
+                fecha_prep_dt = None
                 if es_modelo:
-                    if hasattr(detalle, 'fecha_preparacion') and detalle.fecha_preparacion:
-                        # fecha_preparacion es DateTimeField, convertir a zona horaria de Chile
-                        if timezone.is_aware(detalle.fecha_preparacion):
-                            fecha_chile = detalle.fecha_preparacion.astimezone(chile_tz)
-                        else:
-                            fecha_chile = chile_tz.localize(detalle.fecha_preparacion)
-                        fecha_prep = fecha_chile.strftime('%d/%m/%Y')
-                        hora_prep = fecha_chile.strftime('%H:%M')
+                    fecha_prep_dt = getattr(detalle, 'fecha_preparacion', None)
                 else:
-                    fecha_prep_obj = detalle.get('fecha_preparacion')
-                    if fecha_prep_obj:
-                        if hasattr(fecha_prep_obj, 'strftime'):
-                            # Convertir a zona horaria de Chile si es datetime
-                            if hasattr(fecha_prep_obj, 'astimezone'):
-                                if timezone.is_aware(fecha_prep_obj):
-                                    fecha_chile = fecha_prep_obj.astimezone(chile_tz)
-                                else:
-                                    fecha_chile = chile_tz.localize(fecha_prep_obj)
-                                fecha_prep = fecha_chile.strftime('%d/%m/%Y')
-                                hora_prep = fecha_chile.strftime('%H:%M')
-                            else:
-                                # Es un objeto time o date, formatear directo
-                                fecha_prep = fecha_prep_obj.strftime('%d/%m/%Y') if hasattr(fecha_prep_obj, 'year') else ''
-                                hora_prep = fecha_prep_obj.strftime('%H:%M') if hasattr(fecha_prep_obj, 'hour') else ''
-                
-                fecha_emb = ''
-                hora_emb = ''
+                    fecha_prep_dt = detalle.get('fecha_preparacion')
+
+                fecha_prep = fmt_fecha(fecha_prep_dt)
+                hora_prep  = fmt_hora(fecha_prep_dt)
+
+                # Bulto: fecha_embalaje, fecha_envio/entrega → todos DateTimeField en UTC
+                fecha_emb  = ''
+                hora_emb   = ''
                 fecha_desp = ''
-                hora_desp = ''
-                num_bulto = ''
+                hora_desp  = ''
+                num_bulto  = ''
                 if bulto:
-                    if hasattr(bulto, 'fecha_embalaje') and bulto.fecha_embalaje:
-                        # fecha_embalaje es DateTimeField, convertir a zona horaria de Chile
-                        if timezone.is_aware(bulto.fecha_embalaje):
-                            fecha_chile = bulto.fecha_embalaje.astimezone(chile_tz)
-                        else:
-                            fecha_chile = chile_tz.localize(bulto.fecha_embalaje)
-                        fecha_emb = fecha_chile.strftime('%d/%m/%Y')
-                        hora_emb = fecha_chile.strftime('%H:%M')
-                    
-                    fecha_despacho_obj = (bulto.fecha_envio or bulto.fecha_entrega) if hasattr(bulto, 'fecha_envio') else None
-                    if fecha_despacho_obj:
-                        # Convertir a zona horaria de Chile
-                        if timezone.is_aware(fecha_despacho_obj):
-                            fecha_chile = fecha_despacho_obj.astimezone(chile_tz)
-                        else:
-                            fecha_chile = chile_tz.localize(fecha_despacho_obj)
-                        fecha_desp = fecha_chile.strftime('%d/%m/%Y')
-                        hora_desp = fecha_chile.strftime('%H:%M')
-                    
+                    fecha_emb  = fmt_fecha(getattr(bulto, 'fecha_embalaje', None))
+                    hora_emb   = fmt_hora(getattr(bulto, 'fecha_embalaje', None))
+
+                    fecha_despacho_dt = (
+                        getattr(bulto, 'fecha_envio', None) or getattr(bulto, 'fecha_entrega', None)
+                    )
+                    fecha_desp = fmt_fecha(fecha_despacho_dt)
+                    hora_desp  = fmt_hora(fecha_despacho_dt)
+
                     num_bulto = bulto.codigo if hasattr(bulto, 'codigo') else ''
                 
                 # Obtener datos del detalle (modelo o diccionario)
