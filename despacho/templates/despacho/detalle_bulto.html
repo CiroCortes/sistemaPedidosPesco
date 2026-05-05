@@ -204,10 +204,10 @@
     function generarEtiquetaBulto() {
         try {
             const bultoCodigo = '{{ bulto.codigo|escapejs }}';
-            const solicitudId = {% if solicitud %}{{ solicitud.id }}{% else %}null{% endif %};
-            const numeroBulto = {% if numero_bulto %}{{ numero_bulto }}{% else %}null{% endif %};
-            const totalBultos = {% if total_bultos %}{{ total_bultos }}{% else %}null{% endif %};
-            const cliente = {% if solicitud %}'{{ solicitud.cliente|escapejs }}'{% else %}'-'{% endif %};
+            const solicitudId = {{ bulto.solicitud.id|default:"null" }};
+            const numeroBulto = {{ numero_bulto|default:"null" }};
+            const totalBultos = {{ total_bultos|default:"null" }};
+            const cliente = "{{ bulto.solicitud.cliente|escapejs|default:'-' }}";
             const peso = parseFloat('{{ bulto.peso_total|default:"0" }}') || 0;
             const largo = parseFloat('{{ bulto.largo_cm|default:"0" }}') || 0;
             const ancho = parseFloat('{{ bulto.ancho_cm|default:"0" }}') || 0;
@@ -223,7 +223,7 @@
             const now = new Date();
             const fecha = now.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
             
-            // Generar HTML de la etiqueta (10cm x 20cm = 100mm x 200mm)
+            // Generar HTML de la etiqueta (10cm x 14cm = 100mm x 140mm)
             const htmlEtiqueta = `
 <!DOCTYPE html>
 <html lang="es">
@@ -234,11 +234,17 @@
     <style>
         @media print {
             @page {
-                size: 100mm 200mm;
-                margin: 5mm;
+                size: 100mm 140mm portrait;
+                margin: 0;
             }
             .no-print { display: none !important; }
-            body { margin: 0; padding: 0; }
+            html, body {
+                width: 100mm;
+                height: 140mm;
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+            }
         }
         
         * {
@@ -250,11 +256,13 @@
         body {
             font-family: Arial, sans-serif;
             width: 100mm;
-            height: 200mm;
-            padding: 5mm;
-            border: 2px solid #000;
+            height: 140mm;
+            padding: 4mm;
+            border: 1px solid #000;
             display: flex;
             flex-direction: column;
+            background-color: white;
+            -webkit-print-color-adjust: exact;
         }
         
         .header {
@@ -272,11 +280,11 @@
         }
         
         .header .codigo-bulto {
-            font-size: 24pt;
+            font-size: 26pt;
             font-weight: bold;
             font-family: 'Courier New', monospace;
             color: #000;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
         }
         
         .numero-bulto {
@@ -297,8 +305,8 @@
         }
         
         .info-row {
-            margin: 6px 0;
-            font-size: 11pt;
+            margin: 8px 0;
+            font-size: 12pt;
         }
         
         .info-label {
@@ -379,7 +387,7 @@
 <body>
     <div class="no-print">
         <h2>Etiqueta de Bulto - Vista Previa</h2>
-        <p>Tamaño: 10cm x 20cm</p>
+        <p>Tamaño: 10cm x 14cm</p>
         <button onclick="window.print()">🖨️ Imprimir</button>
         <button onclick="window.close()">Cerrar</button>
     </div>
@@ -441,7 +449,7 @@
             `;
             
             // Abrir ventana de impresión
-            const ventanaImpresion = window.open('', '_blank', 'width=400,height=800');
+            const ventanaImpresion = window.open('', '_blank', 'width=400,height=560');
             ventanaImpresion.document.write(htmlEtiqueta);
             ventanaImpresion.document.close();
             
