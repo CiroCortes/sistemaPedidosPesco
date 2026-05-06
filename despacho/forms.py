@@ -38,6 +38,9 @@ class BultoForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['transportista'].choices = self._transportes_choices()
+        self.fields['transportista'].required = False
+        self.fields['transportista_extra'].required = False
+        self.fields['numero_guia_transportista'].required = False
 
     def _transportes_choices(self):
         choices = [(t.slug, t.nombre) for t in TransporteConfig.activos()]

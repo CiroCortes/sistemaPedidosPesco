@@ -89,11 +89,13 @@
                     {% for solicitud in solicitudes %}
                     <tr>
                         <td>
+                            {% if solicitud.codigos_pendientes > 0 %}
                             <input type="checkbox" class="solicitud-checkbox" value="{{ solicitud.id }}"
                                 data-detalles-id="detalles-{{ solicitud.id }}"
                                 data-transporte="{{ solicitud.transporte }}"
                                 data-ot="{{ solicitud.numero_ot|default:'' }}"
                                 data-afecta-stock="{{ solicitud.afecta_stock|yesno:'true,false' }}">
+                            {% endif %}
                             <script type="application/json" id="detalles-{{ solicitud.id }}">{{ solicitud.detalles_json|safe }}</script>
                         </td>
                         <td>
@@ -121,9 +123,11 @@
                             </div>
                         </td>
                         <td>
-                            <button class="btn btn-sm btn-outline-secondary btn-ver-productos" data-detalles-id="detalles-{{ solicitud.id }}">
-                                <i class="bi bi-eye"></i>
-                            </button>
+                            <div class="d-flex gap-1 justify-content-end">
+                                <button class="btn btn-sm btn-outline-secondary btn-ver-productos" data-detalles-id="detalles-{{ solicitud.id }}" title="Ver productos">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}
@@ -189,12 +193,13 @@
                 <div id="formErrors" class="alert alert-danger d-none"></div>
                 <form id="formBulto" method="post" action="{% url 'despacho:crear_bulto' %}">
                     {% csrf_token %}
-                    <input type="hidden" name="detalle_ids" id="detalleIdsField">
+                    <input type="hidden" name="paquete_datos" id="detalleIdsField">
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Tipo de bulto</label>
                             {{ form.tipo }}
                         </div>
+                        {% if request.user.es_admin %}
                         <div class="col-md-6">
                             <label class="form-label">Transportista</label>
                             <select name="{{ form.transportista.name }}" class="form-select" id="id_{{ form.transportista.name }}">
@@ -212,6 +217,7 @@
                             <label class="form-label">N° guía transportista</label>
                             {{ form.numero_guia_transportista }}
                         </div>
+                        {% endif %}
                         <div class="col-md-4">
                             <label class="form-label">Peso total (kg)</label>
                             {{ form.peso_total }}
@@ -231,6 +237,19 @@
                         <div class="col-12">
                             <label class="form-label">Observaciones</label>
                             {{ form.observaciones }}
+                        </div>
+                        
+                        <div class="col-12 mt-4">
+                            <div class="card border-primary">
+                                <div class="card-body bg-light">
+                                    <h6 class="card-title text-primary"><i class="bi bi-magic me-1"></i> Creación Múltiple (Opcional)</h6>
+                                    <p class="card-text small text-muted mb-2">Para dividir una gran cantidad en varios bultos iguales automáticamente. El peso y medidas se copiarán a cada bulto. (Solo válido al embalar 1 solo código de producto).</p>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <label class="form-label mb-0 text-nowrap">Unidades por bulto:</label>
+                                        <input type="number" name="unidades_por_bulto" id="unidadesPorBulto" class="form-control" style="width: 100px;" min="1">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -296,9 +315,9 @@
 
         if (!soloLectura && ids.length === 1) {
             const checkboxSolicitud = getCheckboxSolicitud(ids[0]);
-            if (checkboxSolicitud) {
+            if (checkboxSolicitud && transportistaField) {
                 transportistaField.value = checkboxSolicitud.dataset.transporte || '';
-                if ((checkboxSolicitud.dataset.transporte || '') !== 'OTRO') {
+                if (transportistaExtra && (checkboxSolicitud.dataset.transporte || '') !== 'OTRO') {
                     transportistaExtra.value = '';
                 }
             }
@@ -328,10 +347,14 @@
                         <span class="badge bg-light text-dark ms-2 border">OT: ${numeroOt || '-'}</span>
                     </div>
                     <div>
+                        ${detalles.filter(d => d.bulto_id).length > 0 ? `
+                        <a href="/despacho/solicitudes/${id}/imprimir_bultos/" target="_blank" class="btn btn-sm btn-outline-primary me-2" title="Imprimir todas las etiquetas generadas">
+                            <i class="bi bi-printer"></i> Imprimir Bultos
+                        </a>` : ''}
                         ${disponiblesSolicitud > 0 ? `
                         <input type="checkbox" class="form-check-input select-all-productos" data-target=".productos-solicitud-${id}" ${soloLectura ? 'disabled' : 'checked'}>
                         <label class="form-check-label ms-1">Seleccionar pendientes</label>
-                        ` : '<span class="text-success"><i class="bi bi-check-circle"></i> Todos en bultos</span>'}
+                        ` : '<span class="text-success fw-bold"><i class="bi bi-check-circle"></i> Pedido Completo</span>'}
                     </div>
                 </div>
                 <div class="table-responsive">
@@ -362,7 +385,15 @@
                                     <td><code>${det.codigo}</code></td>
                                     <td>${det.descripcion}</td>
                                     <td>${det.bodega}</td>
-                                    <td>${det.cantidad}</td>
+                                    <td>
+                                        ${det.bulto_id ? det.cantidad : 
+                                          (estaPreparado && !soloLectura) ? 
+                                          `<div class="d-flex align-items-center gap-1">
+                                              <input type="number" class="form-control form-control-sm cantidad-embalar" data-id="${det.id}" value="${det.cantidad}" min="1" max="${det.cantidad}" style="width: 70px;">
+                                              <span class="text-muted small">/ ${det.cantidad}</span>
+                                           </div>` : 
+                                          det.cantidad}
+                                    </td>
                                     <td>
                                         ${det.bulto_id ? `<a href="/despacho/bultos/${det.bulto_id}/" target="_blank" class="badge bg-primary text-decoration-none"><i class="bi bi-box-seam me-1"></i>${det.bulto_codigo}</a>` : 
                                           (estaPreparado ? '<span class="badge bg-success">✓ Listo</span>' : `<span class="badge bg-secondary">${det.estado_bodega_display || 'Pendiente'}</span>`)}
@@ -447,14 +478,40 @@
     }
 
     btnSubmit.addEventListener('click', () => {
-        const seleccionados = Array.from(document.querySelectorAll('.checkbox-detalle-modal:not(:disabled):checked')).map(cb => cb.value);
+        const seleccionados = Array.from(document.querySelectorAll('.checkbox-detalle-modal:not(:disabled):checked')).map(cb => {
+            const id = cb.value;
+            const inputCantidad = document.querySelector(`.cantidad-embalar[data-id="${id}"]`);
+            const cantidad = inputCantidad ? parseInt(inputCantidad.value) : 0;
+            return { id: id, cantidad: cantidad };
+        }).filter(item => item.cantidad > 0);
+
         if (!seleccionados.length) {
-            formErrors.textContent = 'Debes seleccionar al menos un producto.';
+            formErrors.textContent = 'Debes seleccionar al menos un producto con cantidad válida.';
             formErrors.classList.remove('d-none');
             return;
         }
 
-        document.getElementById('detalleIdsField').value = seleccionados.join(',');
+        const unidadesPorBulto = document.getElementById('unidadesPorBulto').value;
+        if (unidadesPorBulto) {
+            if (seleccionados.length > 1) {
+                formErrors.textContent = 'La creación múltiple automática (Unidades por bulto) solo se puede usar cuando seleccionas exactamente 1 código de producto.';
+                formErrors.classList.remove('d-none');
+                return;
+            }
+            
+            const peso = document.getElementById('id_peso_total').value;
+            const largo = document.getElementById('id_largo_cm').value;
+            const ancho = document.getElementById('id_ancho_cm').value;
+            const alto = document.getElementById('id_alto_cm').value;
+            
+            if (!peso || peso <= 0 || !largo || largo <= 0 || !ancho || ancho <= 0 || !alto || alto <= 0) {
+                formErrors.textContent = 'Para la creación múltiple masiva, es OBLIGATORIO ingresar el Peso y las Medidas (Largo, Ancho, Alto) para que se repliquen correctamente en todos los bultos generados.';
+                formErrors.classList.remove('d-none');
+                return;
+            }
+        }
+
+        document.getElementById('detalleIdsField').value = JSON.stringify(seleccionados);
         setLoading(true);
         formBulto.submit();
     });

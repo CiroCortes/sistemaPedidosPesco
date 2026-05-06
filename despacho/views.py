@@ -146,17 +146,35 @@ def crear_bulto(request):
         return redirect('despacho:gestion')
 
     form = BultoForm(request.POST)
-    raw_ids = request.POST.get('detalle_ids', '')
-    detalle_ids = [pk for pk in raw_ids.split(',') if pk]
+    raw_paquete = request.POST.get('paquete_datos', '')
+    
+    try:
+        paquete_items = json.loads(raw_paquete)
+        detalle_ids = [int(item['id']) for item in paquete_items]
+        cantidades_map = {int(item['id']): int(item['cantidad']) for item in paquete_items}
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+        # Fallback a formato antiguo por si acaso
+        raw_ids = request.POST.get('detalle_ids', '')
+        detalle_ids = [int(pk) for pk in raw_ids.split(',') if pk]
+        cantidades_map = {}
 
     if not detalle_ids:
-        messages.error(request, 'Debes seleccionar al menos un código.')
+        messages.error(request, 'Debes seleccionar al menos un código con cantidad válida.')
+        return redirect('despacho:gestion')
+
+    unidades_por_bulto_str = request.POST.get('unidades_por_bulto')
+    unidades_por_bulto = None
+    if unidades_por_bulto_str and unidades_por_bulto_str.isdigit() and int(unidades_por_bulto_str) > 0:
+        unidades_por_bulto = int(unidades_por_bulto_str)
+
+    if unidades_por_bulto and len(detalle_ids) > 1:
+        messages.error(request, 'La creación múltiple solo es válida cuando seleccionas exactamente 1 código.')
         return redirect('despacho:gestion')
 
     detalles = list(
         SolicitudDetalle.objects
         .select_related('solicitud')
-        .filter(id__in=detalle_ids, solicitud__estado__in=['en_despacho', 'embalado'])
+        .filter(id__in=detalle_ids, solicitud__estado__in=['en_despacho', 'embalado', 'listo_despacho'])
     )
 
     if len(detalles) != len(set(detalle_ids)):
@@ -188,47 +206,98 @@ def crear_bulto(request):
 
     if form.is_valid():
         es_despachador = request.user.es_despacho()
+        bultos_creados = []
+        
         with transaction.atomic():
-            bulto = form.save(commit=False)
-            bulto.creado_por = request.user
-            
-            if es_despachador:
-                bulto.estado = 'listo_despacho'
-            else:
-                bulto.estado = 'embalado'
-            
-            # Asignar solicitud principal solo si hay una sola involucrada
-            if len(solicitudes_ids) == 1:
-                bulto.solicitud = solicitudes_afectadas.first()
-            else:
-                bulto.solicitud = None
+            if unidades_por_bulto and len(detalles) == 1:
+                # MODO MULTIPLE (LOTE)
+                detalle_original = detalles[0]
+                cantidad_total = cantidades_map.get(detalle_original.id, detalle_original.cantidad)
                 
-            if not bulto.fecha_embalaje:
+                if unidades_por_bulto >= cantidad_total:
+                    bultos_a_crear = [(cantidad_total, False)]
+                else:
+                    bultos_completos = cantidad_total // unidades_por_bulto
+                    resto = cantidad_total % unidades_por_bulto
+                    bultos_a_crear = [(unidades_por_bulto, False)] * bultos_completos
+                    if resto > 0:
+                        bultos_a_crear.append((resto, True))
+                
+                for idx, (cant_asignar, es_resto) in enumerate(bultos_a_crear):
+                    bulto = form.save(commit=False)
+                    bulto.pk = None # Instancia nueva
+                    bulto.codigo = ''
+                    bulto.creado_por = request.user
+                    bulto.estado = 'listo_despacho' if es_despachador else 'embalado'
+                    bulto.solicitud = solicitudes_afectadas.first()
+                    bulto.fecha_embalaje = timezone.now()
+                    bulto.save()
+                    bultos_creados.append(bulto.pk)
+                    
+                    if cant_asignar < detalle_original.cantidad:
+                        clon = SolicitudDetalle.objects.get(pk=detalle_original.pk)
+                        clon.pk = None
+                        clon.cantidad = cant_asignar
+                        clon.bulto = bulto
+                        clon.save()
+                        
+                        detalle_original.cantidad -= cant_asignar
+                        detalle_original.save(update_fields=['cantidad'])
+                    else:
+                        detalle_original.bulto = bulto
+                        detalle_original.save(update_fields=['bulto'])
+                        
+            else:
+                # MODO NORMAL (1 solo bulto consolidado)
+                bulto = form.save(commit=False)
+                bulto.creado_por = request.user
+                
+                if es_despachador:
+                    bulto.estado = 'listo_despacho'
+                else:
+                    bulto.estado = 'embalado'
+                
+                if len(solicitudes_ids) == 1:
+                    bulto.solicitud = solicitudes_afectadas.first()
+                else:
+                    bulto.solicitud = None
+                    
                 bulto.fecha_embalaje = timezone.now()
-            bulto.save()
-
-            # Asignar bulto a todos los detalles
-            for detalle in detalles:
-                detalle.bulto = bulto
-                detalle.save(update_fields=['bulto'])
+                bulto.save()
+                bultos_creados.append(bulto.pk)
+    
+                for detalle in detalles:
+                    cantidad_a_embalar = cantidades_map.get(detalle.id, detalle.cantidad)
+                    if cantidad_a_embalar <= 0: continue
+                        
+                    if cantidad_a_embalar < detalle.cantidad:
+                        cantidad_restante = detalle.cantidad - cantidad_a_embalar
+                        detalle.cantidad = cantidad_restante
+                        detalle.save(update_fields=['cantidad'])
+                        
+                        clon = SolicitudDetalle.objects.get(pk=detalle.pk)
+                        clon.pk = None
+                        clon.cantidad = cantidad_a_embalar
+                        clon.bulto = bulto
+                        clon.save()
+                    else:
+                        detalle.bulto = bulto
+                        detalle.save(update_fields=['bulto'])
             
             # Actualizar estado de TODAS las solicitudes involucradas
             for sol in solicitudes_afectadas:
-                # Si todos los detalles de esta solicitud ya están en bultos, cambiar estado
                 if not sol.detalles.filter(bulto__isnull=True).exists():
                     sol.estado = 'listo_despacho'
                     sol.save(update_fields=['estado'])
 
-            mensaje = f'Bulto {bulto.codigo} creado con {len(detalles)} códigos.'
-            if len(solicitudes_ids) > 1:
-                mensaje += f' (Consolidado de {len(solicitudes_ids)} solicitudes)'
-            
-            if es_despachador:
-                mensaje += ' Estado: Listo para despacho.'
-            messages.success(request, mensaje)
-            # Todos van al detalle del bulto (ver info e imprimir etiqueta).
-            # Solo admin ve el formulario "Actualizar estado" en esa página.
-            return redirect('despacho:detalle_bulto', pk=bulto.pk)
+            if len(bultos_creados) > 1:
+                messages.success(request, f'Se crearon {len(bultos_creados)} bultos automáticamente.')
+                # Redirigir a vista de lote (por hacer)
+                return redirect('despacho:lote_bultos', ids=','.join(map(str, bultos_creados)))
+            else:
+                mensaje = f'Bulto {Bulto.objects.get(pk=bultos_creados[0]).codigo} creado exitosamente.'
+                messages.success(request, mensaje)
+                return redirect('despacho:detalle_bulto', pk=bultos_creados[0])
     else:
         messages.error(request, 'Debes completar los datos del bulto.')
 
@@ -267,6 +336,24 @@ def detalle_bulto(request, pk):
                 break
 
     # Asegurar que siempre tengamos valores por defecto
+    
+    import json
+    
+    # Recopilar todas las solicitudes vinculadas al bulto para la etiqueta
+    solicitudes_unicas = set()
+    for d in detalles:
+        solicitudes_unicas.add(d.solicitud)
+        
+    solicitudes_etiqueta = []
+    for s in solicitudes_unicas:
+        numero = s.numero_st if s.tipo == 'ST' else s.numero_pedido
+        solicitudes_etiqueta.append({
+            'id': s.id,
+            'numero': numero or '-',
+            'tipo': s.get_tipo_display() or s.tipo,
+            'cliente': s.cliente or '-'
+        })
+
     context = {
         'bulto': bulto,
         'detalles': detalles,
@@ -274,6 +361,7 @@ def detalle_bulto(request, pk):
         'solicitud': solicitud,
         'numero_bulto': numero_bulto or None,
         'total_bultos': total_bultos or None,
+        'solicitudes_etiqueta_json': json.dumps(solicitudes_etiqueta),
     }
     
     return render(request, 'despacho/detalle_bulto.html', context)
@@ -347,3 +435,80 @@ def actualizar_estado_bulto(request, pk):
                 sol.save(update_fields=['estado'])
 
     return JsonResponse({'success': True})
+
+@login_required
+@role_required(['admin', 'despacho'])
+def lote_bultos(request, ids):
+    bulto_ids = [int(pk) for pk in ids.split(',') if pk.isdigit()]
+    bultos = Bulto.objects.filter(id__in=bulto_ids).select_related('solicitud')
+    
+    if not bultos.exists():
+        messages.error(request, 'No se encontraron bultos en este lote.')
+        return redirect('despacho:gestion')
+        
+    context = {
+        'bultos': bultos,
+        'ids_str': ids
+    }
+    return render(request, 'despacho/lote_bultos.html', context)
+
+
+@login_required
+@role_required(['admin', 'despacho'])
+def imprimir_lote(request, ids):
+    bulto_ids = [int(pk) for pk in ids.split(',') if pk.isdigit()]
+    bultos = Bulto.objects.filter(id__in=bulto_ids).prefetch_related('detalles__solicitud').select_related('solicitud')
+    
+    import json
+    
+    bultos_data = []
+    
+    # Simular la lógica de detalle_bulto para cada uno
+    for idx, bulto in enumerate(bultos):
+        solicitudes_unicas = set()
+        for d in bulto.detalles.all():
+            solicitudes_unicas.add(d.solicitud)
+            
+        solicitudes_etiqueta = []
+        for s in solicitudes_unicas:
+            numero = s.numero_st if s.tipo == 'ST' else s.numero_pedido
+            solicitudes_etiqueta.append({
+                'id': s.id,
+                'numero': numero or '-',
+                'tipo': s.get_tipo_display() or s.tipo,
+                'cliente': s.cliente or '-'
+            })
+            
+        bultos_data.append({
+            'codigo': bulto.codigo,
+            'peso': float(bulto.peso_total or 0),
+            'largo': float(bulto.largo_cm or 0),
+            'ancho': float(bulto.ancho_cm or 0),
+            'alto': float(bulto.alto_cm or 0),
+            'tipo': bulto.get_tipo_display(),
+            'transportista': bulto.get_transportista_display(),
+            'numero_bulto': idx + 1,
+            'total_bultos': len(bultos),
+            'solicitudes_json': json.dumps(solicitudes_etiqueta),
+        })
+
+    context = {
+        'bultos_json': json.dumps(bultos_data),
+        'bultos_count': len(bultos_data),
+    }
+    return render(request, 'despacho/imprimir_lote.html', context)
+
+@login_required
+@role_required(['admin', 'despacho', 'bodega'])
+def imprimir_bultos_solicitud(request, pk):
+    solicitud = get_object_or_404(Solicitud, pk=pk)
+    
+    # Obtener todos los bultos que tengan detalles de esta solicitud
+    bultos_ids = solicitud.detalles.filter(bulto__isnull=False).values_list('bulto_id', flat=True).distinct()
+    
+    if not bultos_ids:
+        messages.error(request, 'No hay bultos generados para esta solicitud.')
+        return redirect('despacho:gestion')
+        
+    ids_str = ','.join(map(str, bultos_ids))
+    return imprimir_lote(request, ids_str)

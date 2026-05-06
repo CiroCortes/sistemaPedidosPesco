@@ -1,77 +1,77 @@
-# Solicitud de Desarrollo MVP – Sistema Logístico PESCO
+# Solicitud de Desarrollo MVP â Sistema LogÃ­stico PESCO
 
-## 📌 Contexto
-La empresa **PESCO** utiliza actualmente **SAP en modo web** para la gestión de stock y reportería.  
-Debido a la dificultad de acceder a queries rápidas, la operación logística se apoya en un **Excel compartido en SharePoint**, donde se registran solicitudes y movimientos diarios.
+## ð Contexto
+La empresa **PESCO** utiliza actualmente **SAP en modo web** para la gestiÃ³n de stock y reporterÃ­a.  
+Debido a la dificultad de acceder a queries rÃ¡pidas, la operaciÃ³n logÃ­stica se apoya en un **Excel compartido en SharePoint**, donde se registran solicitudes y movimientos diarios.
 
-El flujo operativo se centra en tres áreas principales:
-- **Bodega** (Entrega de mercadería a despacho)
+El flujo operativo se centra en tres Ã¡reas principales:
+- **Bodega** (Entrega de mercaderÃ­a a despacho)
 - **Despacho** (Embalaje, pesaje y etiquetado)
-- **Administración** (Emisión de guías SAP y registro final)
+- **AdministraciÃ³n** (EmisiÃ³n de guÃ­as SAP y registro final)
 
 Actualmente, el registro manual en Excel genera problemas de eficiencia, duplicidad y errores humanos.
 
 ---
 
-## 🎯 Objetivo del MVP
+## ð¯ Objetivo del MVP
 Construir un sistema web simple en **Python/Django**, con base de datos en **Supabase**, que permita:
 1. **Registrar solicitudes** de manera ordenada y trazable.
 2. **Manejar stock** mediante cargas temporales desde Excel (descargado de SAP).
 3. **Evitar duplicidad de solicitudes** validando contra stock y pedidos pendientes.
-4. **Generar informes exportables a Excel** para mantener compatibilidad con la operación actual.
-5. **Proveer KPIs** (días en despacho, lead time) para análisis logístico.
+4. **Generar informes exportables a Excel** para mantener compatibilidad con la operaciÃ³n actual.
+5. **Proveer KPIs** (dÃ­as en despacho, lead time) para anÃ¡lisis logÃ­stico.
 
 ---
 
-## 🛠️ Requerimientos Funcionales
+## ð ï¸ Requerimientos Funcionales
 
-### 🔄 Flujo de Trabajo Completo
+### ð Flujo de Trabajo Completo
 
 ```
 1. SOLICITUD INICIAL (Admin/Ventas)
-        ↓
-2. BODEGA → Entrega a Despacho
-        ↓
-3. DESPACHO → Embala, Pesa, Mide
-        ↓
-4. ADMIN → Emite Guía SAP + Registra OT
-        ↓
+        â
+2. BODEGA â Entrega a Despacho
+        â
+3. DESPACHO â Embala, Pesa, Mide
+        â
+4. ADMIN â Emite GuÃ­a SAP + Registra OT
+        â
 5. DESPACHADO
 ```
 
 ---
 
 ### 1. Registro de Solicitudes (Admin)
-**Usuario**: Admin (puede hacerlo también ventas/RRHH si se habilitan)
+**Usuario**: Admin (puede hacerlo tambiÃ©n ventas/RRHH si se habilitan)
 
-- ✅ **IMPLEMENTADO**: Ingreso manual de solicitudes: ventas, RRHH, EPP, emergencias, ambulancia, retiros de camión y **retiros urgentes de clientes**.
+- â **IMPLEMENTADO**: Ingreso manual de solicitudes: ventas, RRHH, EPP, emergencias, ambulancia, retiros de camiÃ³n y **retiros urgentes de clientes**.
 - **Campos principales**:
-  - Fecha (recepción) - automática
-  - Hora (registro) - automática
-  - Tipo (PC, OC, EM, ST, OF, **RM**) - ✅ Implementado con todos los tipos
-  - **Número de pedido** (PC/OF/EM/RM) - opcional, manual
-  - **Número ST** (ST) - ✅ **Auto-generado** con formato `ST-AAAA-###`, reinicia cada año
+  - Fecha (recepciÃ³n) - automÃ¡tica
+  - Hora (registro) - automÃ¡tica
+  - Tipo (PC, OC, EM, ST, OF, **RM**) - â Implementado con todos los tipos
+  - **NÃºmero de pedido** (PC/OF/EM/RM) - opcional, manual
+  - **NÃºmero ST** (ST) - â **Auto-generado** con formato `ST-AAAA-###`, reinicia cada aÃ±o
   - Cliente
-  - **Múltiples productos** - ✅ Implementado con `SolicitudDetalle` (hasta 45 líneas)
-  - Código producto (puede ser "SC" para sin código)
-  - Descripción
+  - **MÃºltiples productos** - â Implementado con `SolicitudDetalle` (hasta 45 lÃ­neas)
+  - CÃ³digo producto (puede ser "SC" para sin cÃ³digo)
+  - DescripciÃ³n
   - Cantidad solicitada
-  - Bodega origen - ✅ **Opcional** (admin o IA la asignará después)
-  - **Transporte** - ✅ Dropdown: Camión PESCO, Varmontt, Starken, Kaizen, Retira cliente, Otro
-  - Observación
+  - Bodega origen - â **Opcional** (admin o IA la asignarÃ¡ despuÃ©s)
+  - **Transporte** - â Dropdown: CamiÃ³n PESCO, Varmontt, Starken, Kaizen, Retira cliente, Otro
+  - ObservaciÃ³n
   - Urgente (checkbox)
 - **Estado inicial**: `pendiente`
-- ✅ **Formulario dinámico**: Inicia con 5 líneas de producto, botón "Agregar línea" para hasta 45 productos
+- â **Formulario dinÃ¡mico**: Inicia con 5 lÃ­neas de producto, botÃ³n "Agregar lÃ­nea" para hasta 45 productos
 
 ---
 
-### 2. Módulo de Bodega (Usuario Bodega)
+### 2. MÃ³dulo de Bodega (Usuario Bodega)
 **Usuario**: Bodega (acceso limitado)
 
-**Función**: Registrar entrega de mercadería a Despacho
+**FunciÃ³n**: Registrar entrega de mercaderÃ­a a Despacho
 
 - **Campos a registrar**:
-  - Número de transferencia (único)
+  - NÃºmero de transferencia (Ãºnico)
   - Fecha de entrega
   - Hora de entrega
   - Productos entregados (lista con cantidades)
@@ -80,28 +80,28 @@ Construir un sistema web simple en **Python/Django**, con base de datos en **Sup
 - **Acciones**:
   - Ver solicitudes pendientes
   - Seleccionar solicitud(es) a procesar
-  - Registrar número de transferencia
+  - Registrar nÃºmero de transferencia
   - Confirmar entrega a despacho
 
 - **Estado cambia a**: `en_despacho`
 
 **Restricciones**: 
-- ❌ No puede ver módulo de despacho
-- ❌ No puede emitir guías
-- ✅ Solo puede registrar transferencias
+- â No puede ver mÃ³dulo de despacho
+- â No puede emitir guÃ­as
+- â Solo puede registrar transferencias
 
 ---
 
-### 3. Módulo de Despacho (Usuario Despacho)
+### 3. MÃ³dulo de Despacho (Usuario Despacho)
 **Usuario**: Despacho (acceso limitado)
 
-**Función**: Recibir mercadería, embalar, pesar, medir y etiquetar
+**FunciÃ³n**: Recibir mercaderÃ­a, embalar, pesar, medir y etiquetar
 
 - **Campos a registrar**:
   - Fecha/hora de embalado
   - Peso (kg)
   - Medidas (largo x ancho x alto en cm)
-  - Número de bultos
+  - NÃºmero de bultos
   - Transporte (PESCO / EXTERNO)
   - Transportista (si es externo: Starken, Varmontt, etc.)
   - Observaciones
@@ -112,126 +112,126 @@ Construir un sistema web simple en **Python/Django**, con base de datos en **Sup
   - Pesar productos
   - Medir bultos
   - **Generar e imprimir etiquetas de bultos** 
-    - 📌 **Modelo de etiqueta pendiente** (será proporcionado por el usuario)
-    - Sistema generará PDF para impresión
-    - Incluirá: código producto, cliente, bulto X de Y, peso, medidas
+    - ð **Modelo de etiqueta pendiente** (serÃ¡ proporcionado por el usuario)
+    - Sistema generarÃ¡ PDF para impresiÃ³n
+    - IncluirÃ¡: cÃ³digo producto, cliente, bulto X de Y, peso, medidas
 
 - **Estado cambia a**: `embalado`
 
 **Restricciones**:
-- ❌ No puede ver módulo de bodega
-- ❌ No puede emitir guías SAP
-- ✅ Solo puede embalar y etiquetar
+- â No puede ver mÃ³dulo de bodega
+- â No puede emitir guÃ­as SAP
+- â Solo puede embalar y etiquetar
 
 ---
 
-### 4. Módulo de Emisión de Guías (Solo Admin)
+### 4. MÃ³dulo de EmisiÃ³n de GuÃ­as (Solo Admin)
 **Usuario**: **Solo Admin**
 
-**Función**: Emitir guía en SAP y registrar números oficiales
+**FunciÃ³n**: Emitir guÃ­a en SAP y registrar nÃºmeros oficiales
 
 - **Campos a registrar**:
-  - Número de Guía de Despacho (de SAP)
-  - Número(s) de OT (orden de trabajo/traslado)
-  - Fecha/hora de emisión
+  - NÃºmero de GuÃ­a de Despacho (de SAP)
+  - NÃºmero(s) de OT (orden de trabajo/traslado)
+  - Fecha/hora de emisiÃ³n
   - Observaciones finales
 
 - **Acciones**:
   - Ver solicitudes "embaladas"
-  - Emitir guía en SAP (fuera del sistema)
-  - Registrar número de guía en el sistema
-  - Registrar número(s) de OT
+  - Emitir guÃ­a en SAP (fuera del sistema)
+  - Registrar nÃºmero de guÃ­a en el sistema
+  - Registrar nÃºmero(s) de OT
   - Confirmar despacho final
 
 - **Estado cambia a**: `despachado`
 
-**Nota importante**: El admin emite la guía directamente en **SAP** (sistema externo) y solo **registra el número** en este sistema para trazabilidad.
+**Nota importante**: El admin emite la guÃ­a directamente en **SAP** (sistema externo) y solo **registra el nÃºmero** en este sistema para trazabilidad.
 
 ---
 
 ### 5. Rol de Administrador (Acceso Total)
-**Usuario**: Admin (tú)
+**Usuario**: Admin (tÃº)
 
 **Privilegios especiales**:
-- ✅ **Acceso a todos los módulos** (Bodega, Despacho, Guías)
-- ✅ Puede completar cualquier paso del proceso
-- ✅ Puede reemplazar a cualquier usuario si falta personal
-- ✅ Puede hacer todo el flujo completo solo
-- ✅ Acceso a reportes y KPIs
-- ✅ Gestión de usuarios
-- ✅ Configuración del sistema
+- â **Acceso a todos los mÃ³dulos** (Bodega, Despacho, GuÃ­as)
+- â Puede completar cualquier paso del proceso
+- â Puede reemplazar a cualquier usuario si falta personal
+- â Puede hacer todo el flujo completo solo
+- â Acceso a reportes y KPIs
+- â GestiÃ³n de usuarios
+- â ConfiguraciÃ³n del sistema
 
 **Casos de uso**:
-- Si falta personal de bodega → Admin puede registrar transferencias
-- Si falta personal de despacho → Admin puede embalar y etiquetar
-- Admin siempre emite las guías SAP
+- Si falta personal de bodega â Admin puede registrar transferencias
+- Si falta personal de despacho â Admin puede embalar y etiquetar
+- Admin siempre emite las guÃ­as SAP
 
 ---
 
-### 6. KPIs Automáticos
-- **Días en despacho**: Desde que bodega entrega hasta que admin emite guía
+### 6. KPIs AutomÃ¡ticos
+- **DÃ­as en despacho**: Desde que bodega entrega hasta que admin emite guÃ­a
 - **Lead time total**: Desde solicitud inicial hasta despacho final
 - **Solicitudes urgentes**: Contador y tiempo promedio de respuesta
-- **Eficiencia por área**: Tiempo promedio en bodega vs despacho
+- **Eficiencia por Ã¡rea**: Tiempo promedio en bodega vs despacho
 
 ---
 
-## 📊 Flujo de Estados del Sistema
+## ð Flujo de Estados del Sistema
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    CICLO DE VIDA DE SOLICITUD                    │
-└─────────────────────────────────────────────────────────────────┘
+âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+â                    CICLO DE VIDA DE SOLICITUD                    â
+âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-┌─────────────┐
-│  PENDIENTE  │  ← Estado inicial (Admin crea solicitud)
-└──────┬──────┘
-       │ 📦 Usuario BODEGA registra:
-       │    - Número transferencia
-       │    - Fecha/hora entrega
-       ↓
-┌─────────────┐
-│EN_DESPACHO  │  ← Esperando que Despacho procese
-└──────┬──────┘
-       │ 🚚 Usuario DESPACHO registra:
-       │    - Peso, medidas
-       │    - Número de bultos
-       │    - Genera etiquetas
-       ↓
-┌─────────────┐
-│  EMBALADO   │  ← Esperando que Admin emita guía
-└──────┬──────┘
-       │ 👤 Usuario ADMIN registra:
-       │    - Guía SAP (emitida en SAP)
-       │    - Número(s) OT
-       ↓
-┌─────────────┐
-│ DESPACHADO  │  ← Estado final ✅
-└─────────────┘
+âââââââââââââââ
+â  PENDIENTE  â  â Estado inicial (Admin crea solicitud)
+ââââââââ¬âââââââ
+       â ð¦ Usuario BODEGA registra:
+       â    - NÃºmero transferencia
+       â    - Fecha/hora entrega
+       â
+âââââââââââââââ
+âEN_DESPACHO  â  â Esperando que Despacho procese
+ââââââââ¬âââââââ
+       â ð Usuario DESPACHO registra:
+       â    - Peso, medidas
+       â    - NÃºmero de bultos
+       â    - Genera etiquetas
+       â
+âââââââââââââââ
+â  EMBALADO   â  â Esperando que Admin emita guÃ­a
+ââââââââ¬âââââââ
+       â ð¤ Usuario ADMIN registra:
+       â    - GuÃ­a SAP (emitida en SAP)
+       â    - NÃºmero(s) OT
+       â
+âââââââââââââââ
+â DESPACHADO  â  â Estado final â
+âââââââââââââââ
 
-       ❌ CANCELADO ← Puede cancelarse en cualquier momento (solo Admin)
+       â CANCELADO â Puede cancelarse en cualquier momento (solo Admin)
 ```
 
 ### Estados Detallados
 
-| Estado | Color | Descripción | Quién puede cambiar |
+| Estado | Color | DescripciÃ³n | QuiÃ©n puede cambiar |
 |--------|-------|-------------|---------------------|
-| `pendiente` | 🟡 Amarillo | Solicitud creada, esperando bodega | → Bodega |
-| `en_despacho` | 🔵 Azul | Mercadería entregada a despacho | → Despacho |
-| `embalado` | 🟢 Verde claro | Embalado y listo, falta guía | → Admin |
-| `despachado` | 🟢 Verde | Completado con guía SAP | Estado final |
-| `cancelado` | 🔴 Rojo | Solicitud cancelada | Solo Admin |
+| `pendiente` | ð¡ Amarillo | Solicitud creada, esperando bodega | â Bodega |
+| `en_despacho` | ðµ Azul | MercaderÃ­a entregada a despacho | â Despacho |
+| `embalado` | ð¢ Verde claro | Embalado y listo, falta guÃ­a | â Admin |
+| `despachado` | ð¢ Verde | Completado con guÃ­a SAP | Estado final |
+| `cancelado` | ð´ Rojo | Solicitud cancelada | Solo Admin |
 
 ---
 
-## 🗄️ Manejo de Base de Datos
+## ðï¸ Manejo de Base de Datos
 
 ### Supabase
 - Usado para **registro de solicitudes y KPIs**.
 - Ventajas:
-  - Plan gratuito suficiente para ~20 solicitudes diarias (≈4,400 mensuales).
+  - Plan gratuito suficiente para ~20 solicitudes diarias (â4,400 mensuales).
   - Escalable en caso de crecimiento.
-- Contendrá tablas:
+- ContendrÃ¡ tablas:
   - `solicitudes`
   - `bodega_transferencias`
   - `despachos`
@@ -240,18 +240,18 @@ Construir un sistema web simple en **Python/Django**, con base de datos en **Sup
 ### Excel (base temporal externa)
 - Usado para **cargas masivas de stock y pedidos pendientes** desde SAP.
 - Flujo:
-  1. Cada mañana se descarga stock desde SAP.
+  1. Cada maÃ±ana se descarga stock desde SAP.
   2. Se sube al sistema como archivo Excel/CSV.
   3. El sistema valida solicitudes contra stock/pedidos pendientes.
 - No se almacena en Supabase para evitar costos elevados.
 
 ---
 
-## 📊 Informes
+## ð Informes
 - El sistema debe exportar reportes en **Excel** para:
   - Encargados de bodega
   - Despacho
-  - Administración
+  - AdministraciÃ³n
 - Reportes incluyen:
   - Solicitudes pendientes
   - Transferencias realizadas
@@ -260,24 +260,24 @@ Construir un sistema web simple en **Python/Django**, con base de datos en **Sup
 
 ---
 
-## 🔐 Roles y Permisos
+## ð Roles y Permisos
 
 ### Roles del Sistema
 
-1. **👤 Admin (Tú)** → Acceso total, puede hacer TODO:
+1. **ð¤ Admin (TÃº)** â Acceso total, puede hacer TODO:
    - Crear solicitudes
    - Registrar transferencias de bodega
    - Embalar y etiquetar en despacho
-   - **Emitir guías SAP y registrar OT**
+   - **Emitir guÃ­as SAP y registrar OT**
    - Ver reportes y KPIs
    - Gestionar usuarios
 
-2. **📦 Bodega** → Acceso limitado:
+2. **ð¦ Bodega** â Acceso limitado:
    - Ver solicitudes pendientes
    - Registrar transferencias a despacho
    - Ver historial de sus transferencias
 
-3. **🚚 Despacho** → Acceso limitado:
+3. **ð Despacho** â Acceso limitado:
    - Ver solicitudes en despacho
    - Registrar embalaje, peso, medidas
    - Generar e imprimir etiquetas de bultos
@@ -285,231 +285,231 @@ Construir un sistema web simple en **Python/Django**, con base de datos en **Sup
 
 ---
 
-## 🚀 Alcance del MVP
-1. **Ingreso de solicitudes manuales** con validación contra stock cargado desde Excel.  
+## ð Alcance del MVP
+1. **Ingreso de solicitudes manuales** con validaciÃ³n contra stock cargado desde Excel.  
 2. **Dashboard en tabla simple** mostrando estados (pendiente, listo, embalado, despachado, urgente).  
-3. **Carga de stock/pedidos pendientes vía Excel/CSV**.  
-4. **Exportación de reportes a Excel**.  
-5. **KPIs básicos**: días en despacho y lead time.  
+3. **Carga de stock/pedidos pendientes vÃ­a Excel/CSV**.  
+4. **ExportaciÃ³n de reportes a Excel**.  
+5. **KPIs bÃ¡sicos**: dÃ­as en despacho y lead time.  
 
 ---
 
-## 🛠️ Stack Tecnológico
+## ð ï¸ Stack TecnolÃ³gico
 
 ### Backend
 - **Python 3.11+**
 - **Django 5.0+** (Framework principal)
 - **Supabase** (Base de datos PostgreSQL)
-  - Índices optimizados para consultas rápidas
+  - Ãndices optimizados para consultas rÃ¡pidas
   - Plan gratuito: 500MB storage, 50K usuarios activos
 - **Django REST Framework** (APIs)
-- **MCP Server** (Model Context Protocol para integración con IA)
+- **MCP Server** (Model Context Protocol para integraciÃ³n con IA)
   - Biblioteca: `mcp-django`
-  - Permite interacción con asistentes de IA
+  - Permite interacciÃ³n con asistentes de IA
 
 ### Frontend
 - **Bootstrap 5** (Framework CSS responsivo)
 - **JavaScript (ES6+)** (Interactividad)
 - **Django Templates** (Renderizado del lado del servidor)
-- **Componentes modulares reutilizables** (evitar código repetitivo)
+- **Componentes modulares reutilizables** (evitar cÃ³digo repetitivo)
 
-### Gestión de Datos
+### GestiÃ³n de Datos
 - **Pandas** (Procesamiento de archivos Excel/CSV)
 - **openpyxl** (Lectura y escritura de Excel)
-- **Cookies** (Caché de consultas frecuentes para reducir carga en DB)
+- **Cookies** (CachÃ© de consultas frecuentes para reducir carga en DB)
 
 ### Deployment
 - **Render** (Hosting web gratuito/pago)
 - **Gunicorn** (Servidor WSGI)
-- **WhiteNoise** (Archivos estáticos)
+- **WhiteNoise** (Archivos estÃ¡ticos)
 
 ---
 
-## 🎨 Diseño UI/UX
+## ð¨ DiseÃ±o UI/UX
 
 ### Paleta de Colores
 Basada en dashboard corporativo profesional:
 - **Azul Principal**: `#00B4D8` (turquesa/celeste) - Elementos principales, navbar
 - **Verde**: `#4CAF50` - Estados completados, alertas positivas
 - **Amarillo**: `#FFC107` - Estados pendientes, advertencias
-- **Rojo**: `#F44336` - Estados cancelados, alertas críticas
+- **Rojo**: `#F44336` - Estados cancelados, alertas crÃ­ticas
 - **Gris**: `#6C757D` - Texto secundario
 - **Blanco**: `#FFFFFF` - Fondos de tarjetas
 
 ### Componentes UI
-- **Dashboard con KPIs** (tarjetas métricas con iconos)
-- **Tablas responsivas** con paginación
+- **Dashboard con KPIs** (tarjetas mÃ©tricas con iconos)
+- **Tablas responsivas** con paginaciÃ³n
 - **Formularios validados** con feedback visual
-- **Filtros dinámicos** sin recargar página
+- **Filtros dinÃ¡micos** sin recargar pÃ¡gina
 - **Notificaciones toast** para acciones del usuario
-- **Exportación a Excel** con un clic
+- **ExportaciÃ³n a Excel** con un clic
 
 ---
 
-## 🏗️ Arquitectura del Sistema
+## ðï¸ Arquitectura del Sistema
 
-### ✅ Estructura del Proyecto Implementada
+### â Estructura del Proyecto Implementada
 
 ```
 sistemaPesco/
-├── backend/                  # Configuración Django
-│   ├── settings.py          # Settings con Supabase, Gemini, etc.
-│   ├── urls.py              # URLs principales
-│   └── wsgi.py
-│
-├── core/                    # App central ✅ IMPLEMENTADO
-│   ├── models.py           # Usuario (rol: admin/bodega/despacho)
-│   ├── views.py            # Dashboard, login, logout, perfil
-│   ├── decorators.py       # @role_required
-│   ├── admin.py            # Admin personalizado
-│   └── templates/
-│       ├── dashboard.html
-│       ├── login.html
-│       └── perfil.html
-│
-├── solicitudes/            # Módulo de solicitudes ✅ IMPLEMENTADO
-│   ├── models.py          # Solicitud + SolicitudDetalle
-│   ├── views.py           # CRUD + API IA
-│   ├── forms.py           # SolicitudForm + SolicitudDetalleFormSet
-│   ├── services.py        # crear_solicitud_desde_payload()
-│   ├── urls.py
-│   └── templates/
-│       ├── lista.html
-│       ├── formulario.html
-│       └── detalle.html
-│
-├── ia/                     # Módulo de IA ✅ IMPLEMENTADO
-│   ├── gemini_client.py   # call_gemini_for_solicitud()
-│   ├── views.py          # ia_chat (vista web)
-│   ├── urls.py
-│   └── templates/
-│       └── chat.html
-│
-├── frontend_django/        # Templates globales ✅ IMPLEMENTADO
-│   └── templates/
-│       ├── base.html
-│       └── components/
-│           ├── navbar.html
-│           └── sidebar.html
-│
-├── mcp_server.py          # Servidor MCP ✅ IMPLEMENTADO
-├── test/                  # Tests
-│   └── test_gemini.py
-├── manage.py
-├── requirements.txt
-├── .env.example
-└── README.md
+âââ backend/                  # ConfiguraciÃ³n Django
+â   âââ settings.py          # Settings con Supabase, Gemini, etc.
+â   âââ urls.py              # URLs principales
+â   âââ wsgi.py
+â
+âââ core/                    # App central â IMPLEMENTADO
+â   âââ models.py           # Usuario (rol: admin/bodega/despacho)
+â   âââ views.py            # Dashboard, login, logout, perfil
+â   âââ decorators.py       # @role_required
+â   âââ admin.py            # Admin personalizado
+â   âââ templates/
+â       âââ dashboard.html
+â       âââ login.html
+â       âââ perfil.html
+â
+âââ solicitudes/            # MÃ³dulo de solicitudes â IMPLEMENTADO
+â   âââ models.py          # Solicitud + SolicitudDetalle
+â   âââ views.py           # CRUD + API IA
+â   âââ forms.py           # SolicitudForm + SolicitudDetalleFormSet
+â   âââ services.py        # crear_solicitud_desde_payload()
+â   âââ urls.py
+â   âââ templates/
+â       âââ lista.html
+â       âââ formulario.html
+â       âââ detalle.html
+â
+âââ ia/                     # MÃ³dulo de IA â IMPLEMENTADO
+â   âââ gemini_client.py   # call_gemini_for_solicitud()
+â   âââ views.py          # ia_chat (vista web)
+â   âââ urls.py
+â   âââ templates/
+â       âââ chat.html
+â
+âââ frontend_django/        # Templates globales â IMPLEMENTADO
+â   âââ templates/
+â       âââ base.html
+â       âââ components/
+â           âââ navbar.html
+â           âââ sidebar.html
+â
+âââ mcp_server.py          # Servidor MCP â IMPLEMENTADO
+âââ test/                  # Tests
+â   âââ test_gemini.py
+âââ manage.py
+âââ requirements.txt
+âââ .env.example
+âââ README.md
 ```
 
 ### Arquitectura Modular (Inspirada en sistemaGDV)
 
 ```
 sistemaPesco/
-├── config/                  # Configuración Django
-│   ├── settings/
-│   │   ├── base.py         # Settings comunes
-│   │   ├── development.py  # Settings desarrollo
-│   │   └── production.py   # Settings producción
-│   ├── urls.py
-│   └── wsgi.py
-│
-├── apps/                    # Aplicaciones modulares
-│   ├── core/               # Funcionalidades centrales
-│   │   ├── models.py      # Usuario, etc.
-│   │   ├── views.py       # Dashboard, login
-│   │   ├── decorators.py  # @role_required
-│   │   └── templates/
-│   │       └── dashboard.html
-│   │
-│   ├── solicitudes/        # Módulo de solicitudes (Admin)
-│   │   ├── models.py      # Modelo Solicitud
-│   │   ├── views.py       # CRUD solicitudes
-│   │   ├── forms.py       # Formularios
-│   │   ├── urls.py
-│   │   └── templates/
-│   │       ├── solicitud_lista.html
-│   │       └── solicitud_form.html
-│   │
-│   ├── bodega/             # Módulo de bodega
-│   │   ├── models.py      # Modelo Transferencia
-│   │   ├── views.py       # Vista solo para bodega
-│   │   ├── forms.py       # Form transferencia
-│   │   └── templates/
-│   │       └── bodega_panel.html
-│   │
-│   ├── despacho/           # Módulo de despacho
-│   │   ├── models.py      # Modelo Embalaje
-│   │   ├── views.py       # Vista solo para despacho
-│   │   ├── forms.py       # Form embalaje
-│   │   ├── etiquetas.py   # Generación de etiquetas PDF
-│   │   └── templates/
-│   │       ├── despacho_panel.html
-│   │       └── etiqueta_bulto.html
-│   │
-│   ├── guias/              # Módulo de guías SAP (Solo Admin)
-│   │   ├── views.py       # Registro de guías
-│   │   ├── forms.py       # Form guía + OT
-│   │   └── templates/
-│   │       └── guias_panel.html
-│   │
-│   ├── reportes/           # Módulo de reportes y KPIs
-│   │   ├── views.py
-│   │   ├── exporters.py   # Lógica de exportación Excel
-│   │   ├── kpis.py        # Cálculo de KPIs
-│   │   └── templates/
-│   │       └── reportes.html
-│   │
-│   └── stock/              # Módulo de gestión de stock (opcional)
-│       ├── models.py      # Caché de stock
-│       ├── importers.py   # Carga desde Excel
-│       └── validators.py  # Validación contra SAP
-│
-├── static/                  # Archivos estáticos
-│   ├── css/
-│   │   ├── bootstrap.min.css
-│   │   └── custom.css     # Estilos personalizados
-│   ├── js/
-│   │   ├── bootstrap.bundle.min.js
-│   │   └── app.js         # JavaScript global
-│   └── img/
-│
-├── templates/              # Templates globales
-│   ├── base.html          # Template base (navbar, footer)
-│   ├── dashboard.html     # Dashboard principal
-│   └── components/        # Componentes reutilizables
-│       ├── card_kpi.html
-│       ├── table.html
-│       └── form_modal.html
-│
-├── utils/                  # Utilidades compartidas
-│   ├── decorators.py
-│   ├── helpers.py
-│   └── validators.py
-│
-├── mcp/                    # Servidor MCP para IA
-│   ├── server.py
-│   └── tools.py
-│
-├── requirements/
-│   ├── base.txt
-│   ├── development.txt
-│   └── production.txt
-│
-├── .env.example
-├── manage.py
-└── README.md
+âââ config/                  # ConfiguraciÃ³n Django
+â   âââ settings/
+â   â   âââ base.py         # Settings comunes
+â   â   âââ development.py  # Settings desarrollo
+â   â   âââ production.py   # Settings producciÃ³n
+â   âââ urls.py
+â   âââ wsgi.py
+â
+âââ apps/                    # Aplicaciones modulares
+â   âââ core/               # Funcionalidades centrales
+â   â   âââ models.py      # Usuario, etc.
+â   â   âââ views.py       # Dashboard, login
+â   â   âââ decorators.py  # @role_required
+â   â   âââ templates/
+â   â       âââ dashboard.html
+â   â
+â   âââ solicitudes/        # MÃ³dulo de solicitudes (Admin)
+â   â   âââ models.py      # Modelo Solicitud
+â   â   âââ views.py       # CRUD solicitudes
+â   â   âââ forms.py       # Formularios
+â   â   âââ urls.py
+â   â   âââ templates/
+â   â       âââ solicitud_lista.html
+â   â       âââ solicitud_form.html
+â   â
+â   âââ bodega/             # MÃ³dulo de bodega
+â   â   âââ models.py      # Modelo Transferencia
+â   â   âââ views.py       # Vista solo para bodega
+â   â   âââ forms.py       # Form transferencia
+â   â   âââ templates/
+â   â       âââ bodega_panel.html
+â   â
+â   âââ despacho/           # MÃ³dulo de despacho
+â   â   âââ models.py      # Modelo Embalaje
+â   â   âââ views.py       # Vista solo para despacho
+â   â   âââ forms.py       # Form embalaje
+â   â   âââ etiquetas.py   # GeneraciÃ³n de etiquetas PDF
+â   â   âââ templates/
+â   â       âââ despacho_panel.html
+â   â       âââ etiqueta_bulto.html
+â   â
+â   âââ guias/              # MÃ³dulo de guÃ­as SAP (Solo Admin)
+â   â   âââ views.py       # Registro de guÃ­as
+â   â   âââ forms.py       # Form guÃ­a + OT
+â   â   âââ templates/
+â   â       âââ guias_panel.html
+â   â
+â   âââ reportes/           # MÃ³dulo de reportes y KPIs
+â   â   âââ views.py
+â   â   âââ exporters.py   # LÃ³gica de exportaciÃ³n Excel
+â   â   âââ kpis.py        # CÃ¡lculo de KPIs
+â   â   âââ templates/
+â   â       âââ reportes.html
+â   â
+â   âââ stock/              # MÃ³dulo de gestiÃ³n de stock (opcional)
+â       âââ models.py      # CachÃ© de stock
+â       âââ importers.py   # Carga desde Excel
+â       âââ validators.py  # ValidaciÃ³n contra SAP
+â
+âââ static/                  # Archivos estÃ¡ticos
+â   âââ css/
+â   â   âââ bootstrap.min.css
+â   â   âââ custom.css     # Estilos personalizados
+â   âââ js/
+â   â   âââ bootstrap.bundle.min.js
+â   â   âââ app.js         # JavaScript global
+â   âââ img/
+â
+âââ templates/              # Templates globales
+â   âââ base.html          # Template base (navbar, footer)
+â   âââ dashboard.html     # Dashboard principal
+â   âââ components/        # Componentes reutilizables
+â       âââ card_kpi.html
+â       âââ table.html
+â       âââ form_modal.html
+â
+âââ utils/                  # Utilidades compartidas
+â   âââ decorators.py
+â   âââ helpers.py
+â   âââ validators.py
+â
+âââ mcp/                    # Servidor MCP para IA
+â   âââ server.py
+â   âââ tools.py
+â
+âââ requirements/
+â   âââ base.txt
+â   âââ development.txt
+â   âââ production.txt
+â
+âââ .env.example
+âââ manage.py
+âââ README.md
 ```
 
 ### Principios de Arquitectura
-1. **Separación de responsabilidades** (SoC)
+1. **SeparaciÃ³n de responsabilidades** (SoC)
 2. **DRY (Don't Repeat Yourself)** - Componentes reutilizables
 3. **Modularidad** - Cada app Django es independiente
-4. **Escalabilidad** - Fácil agregar nuevos módulos
-5. **Mantenibilidad** - Código limpio y documentado
+4. **Escalabilidad** - FÃ¡cil agregar nuevos mÃ³dulos
+5. **Mantenibilidad** - CÃ³digo limpio y documentado
 
 ---
 
-## 🗄️ Estructura de Base de Datos (Supabase)
+## ðï¸ Estructura de Base de Datos (Supabase)
 
 ### Tablas Principales
 
@@ -523,10 +523,10 @@ CREATE TABLE solicitudes (
     numero_pedido VARCHAR(50), -- Opcional para PC/OF/EM/RM
     numero_st VARCHAR(20), -- Auto-generado para ST (formato: ST-AAAA-###)
     cliente VARCHAR(200),
-    codigo VARCHAR(50), -- Código del primer producto (legacy)
-    descripcion TEXT, -- Descripción del primer producto (legacy)
+    codigo VARCHAR(50), -- CÃ³digo del primer producto (legacy)
+    descripcion TEXT, -- DescripciÃ³n del primer producto (legacy)
     cantidad_solicitada INTEGER, -- Cantidad del primer producto (legacy)
-    bodega VARCHAR(50), -- Opcional (puede quedar vacío)
+    bodega VARCHAR(50), -- Opcional (puede quedar vacÃ­o)
     transporte VARCHAR(20) DEFAULT 'PESCO' CHECK (transporte IN ('PESCO', 'VARMONTT', 'STARKEN', 'KAIZEN', 'RETIRA_CLIENTE', 'OTRO')),
     observacion TEXT,
     estado VARCHAR(20) DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'en_despacho', 'embalado', 'despachado', 'cancelado')),
@@ -536,7 +536,7 @@ CREATE TABLE solicitudes (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Índices para optimización
+-- Ãndices para optimizaciÃ³n
 CREATE INDEX idx_solicitudes_fecha ON solicitudes(fecha_solicitud DESC);
 CREATE INDEX idx_solicitudes_estado ON solicitudes(estado);
 CREATE INDEX idx_solicitudes_codigo ON solicitudes(codigo);
@@ -546,9 +546,9 @@ CREATE INDEX idx_solicitudes_tipo_created ON solicitudes(tipo, created_at);
 
 -- Comentarios sobre estados:
 -- pendiente: Solicitud creada, esperando bodega
--- en_despacho: Bodega entregó a despacho
--- embalado: Despacho terminó de embalar
--- despachado: Admin emitió guía SAP
+-- en_despacho: Bodega entregÃ³ a despacho
+-- embalado: Despacho terminÃ³ de embalar
+-- despachado: Admin emitiÃ³ guÃ­a SAP
 -- cancelado: Solicitud cancelada
 ```
 
@@ -563,11 +563,11 @@ CREATE TABLE solicitudes_detalle (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Índices
+-- Ãndices
 CREATE INDEX idx_solicitudes_detalle_solicitud ON solicitudes_detalle(solicitud_id, codigo);
 ```
 
-**Nota**: Las solicitudes pueden tener múltiples productos (hasta 45 líneas). Los campos `codigo`, `descripcion`, `cantidad_solicitada` en la tabla `solicitudes` se mantienen por compatibilidad con solicitudes antiguas que no usan `solicitudes_detalle`.
+**Nota**: Las solicitudes pueden tener mÃºltiples productos (hasta 45 lÃ­neas). Los campos `codigo`, `descripcion`, `cantidad_solicitada` en la tabla `solicitudes` se mantienen por compatibilidad con solicitudes antiguas que no usan `solicitudes_detalle`.
 
 #### `bodega_transferencias`
 ```sql
@@ -582,7 +582,7 @@ CREATE TABLE bodega_transferencias (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Índices
+-- Ãndices
 CREATE INDEX idx_transferencias_solicitud ON bodega_transferencias(solicitud_id);
 CREATE INDEX idx_transferencias_fecha ON bodega_transferencias(fecha_transferencia DESC);
 ```
@@ -604,9 +604,9 @@ CREATE TABLE despachos (
     encargado_embalaje_id INTEGER REFERENCES usuarios(id),
     observaciones_embalaje TEXT,
     
-    -- Datos de guía SAP (registrados por Admin)
-    guia_despacho VARCHAR(50) UNIQUE, -- Número de guía SAP (nullable hasta que admin la emite)
-    numero_ot VARCHAR(200), -- Puede ser múltiples OTs separados por comas
+    -- Datos de guÃ­a SAP (registrados por Admin)
+    guia_despacho VARCHAR(50) UNIQUE, -- NÃºmero de guÃ­a SAP (nullable hasta que admin la emite)
+    numero_ot VARCHAR(200), -- Puede ser mÃºltiples OTs separados por comas
     fecha_guia DATE,
     hora_guia TIME,
     admin_emisor_id INTEGER REFERENCES usuarios(id),
@@ -616,7 +616,7 @@ CREATE TABLE despachos (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Índices
+-- Ãndices
 CREATE INDEX idx_despachos_solicitud ON despachos(solicitud_id);
 CREATE INDEX idx_despachos_fecha_embalado ON despachos(fecha_embalado DESC);
 CREATE INDEX idx_despachos_fecha_guia ON despachos(fecha_guia DESC);
@@ -634,7 +634,7 @@ CREATE TABLE kpis (
     calculado_at TIMESTAMP DEFAULT NOW()
 );
 
--- Índices
+-- Ãndices
 CREATE INDEX idx_kpis_solicitud ON kpis(solicitud_id);
 ```
 
@@ -643,7 +643,7 @@ CREATE INDEX idx_kpis_solicitud ON kpis(solicitud_id);
 CREATE TABLE usuarios (
     id SERIAL PRIMARY KEY,
     username VARCHAR(150) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL, -- Hash de contraseña
+    password VARCHAR(255) NOT NULL, -- Hash de contraseÃ±a
     email VARCHAR(254) UNIQUE NOT NULL,
     nombre_completo VARCHAR(200),
     rol VARCHAR(20) CHECK (rol IN ('admin', 'bodega', 'despacho')),
@@ -653,7 +653,7 @@ CREATE TABLE usuarios (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Índices
+-- Ãndices
 CREATE INDEX idx_usuarios_rol ON usuarios(rol);
 CREATE INDEX idx_usuarios_username ON usuarios(username);
 
@@ -664,18 +664,18 @@ VALUES ('admin', 'admin@pesco.cl', 'Administrador Principal', 'admin', TRUE);
 
 ---
 
-## 🔐 Sistema de Autenticación y Permisos
+## ð Sistema de AutenticaciÃ³n y Permisos
 
 ### Roles y Accesos Detallados
-| Rol | Crear Solicitud | Registrar Transferencia | Embalar/Pesar/Medir | Emitir Guía SAP | Reportes | KPIs | Gestión Usuarios |
+| Rol | Crear Solicitud | Registrar Transferencia | Embalar/Pesar/Medir | Emitir GuÃ­a SAP | Reportes | KPIs | GestiÃ³n Usuarios |
 |-----|----------------|------------------------|---------------------|-----------------|----------|------|------------------|
-| **👤 Admin** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **📦 Bodega** | ❌ | ✅ | ❌ | ❌ | ⚠️ Solo sus transferencias | ❌ | ❌ |
-| **🚚 Despacho** | ❌ | ❌ | ✅ | ❌ | ⚠️ Solo sus despachos | ❌ | ❌ |
+| **ð¤ Admin** | â | â | â | â | â | â | â |
+| **ð¦ Bodega** | â | â | â | â | â ï¸ Solo sus transferencias | â | â |
+| **ð Despacho** | â | â | â | â | â ï¸ Solo sus despachos | â | â |
 
-**Nota importante**: Solo el **Admin** puede emitir guías SAP y tener acceso completo a todos los módulos.
+**Nota importante**: Solo el **Admin** puede emitir guÃ­as SAP y tener acceso completo a todos los mÃ³dulos.
 
-### Implementación
+### ImplementaciÃ³n
 ```python
 # utils/decorators.py
 from functools import wraps
@@ -696,36 +696,36 @@ def role_required(allowed_roles):
 
 ---
 
-## 🤖 Integración con Inteligencia Artificial
+## ð¤ IntegraciÃ³n con Inteligencia Artificial
 
-### ✅ Asistente IA Integrado en la Web
+### â Asistente IA Integrado en la Web
 
-El sistema incluye un **Asistente IA** integrado directamente en la aplicación web, accesible desde el menú lateral para usuarios Admin.
+El sistema incluye un **Asistente IA** integrado directamente en la aplicaciÃ³n web, accesible desde el menÃº lateral para usuarios Admin.
 
 **Funcionalidades**:
-- ✅ **Procesamiento de texto**: Pega el contenido de un correo electrónico y la IA extrae automáticamente:
+- â **Procesamiento de texto**: Pega el contenido de un correo electrÃ³nico y la IA extrae automÃ¡ticamente:
   - Tipo de solicitud (PC, OF, EM, RM, ST)
-  - Número de pedido (si aplica)
+  - NÃºmero de pedido (si aplica)
   - Cliente
-  - Códigos de productos y cantidades
-  - Observaciones adicionales (direcciones de entrega, instrucciones de facturación, etc.)
-- ✅ **Procesamiento de imágenes**: Sube capturas de pantalla de SAP y la IA:
-  - Identifica números de pedido
-  - Extrae códigos de productos y cantidades
-  - Genera automáticamente la solicitud completa
+  - CÃ³digos de productos y cantidades
+  - Observaciones adicionales (direcciones de entrega, instrucciones de facturaciÃ³n, etc.)
+- â **Procesamiento de imÃ¡genes**: Sube capturas de pantalla de SAP y la IA:
+  - Identifica nÃºmeros de pedido
+  - Extrae cÃ³digos de productos y cantidades
+  - Genera automÃ¡ticamente la solicitud completa
 
-**Tecnología**: 
+**TecnologÃ­a**: 
 - **Gemini 2.5 Flash** (`google-generativeai`)
-- Modelo configurado con prompt especializado para extracción de datos logísticos
-- Integración directa con el sistema de creación de solicitudes
+- Modelo configurado con prompt especializado para extracciÃ³n de datos logÃ­sticos
+- IntegraciÃ³n directa con el sistema de creaciÃ³n de solicitudes
 
-**Ubicación**: `/ia/chat/` (requiere autenticación y rol Admin)
+**UbicaciÃ³n**: `/ia/chat/` (requiere autenticaciÃ³n y rol Admin)
 
-### ✅ API Endpoint para Agentes IA Externos
+### â API Endpoint para Agentes IA Externos
 
 **Endpoint**: `POST /solicitudes/api/ia/crear/`
 
-**Autenticación**: Token API (`X-API-TOKEN` o `Authorization: Bearer`)
+**AutenticaciÃ³n**: Token API (`X-API-TOKEN` o `Authorization: Bearer`)
 
 **Payload JSON**:
 ```json
@@ -734,10 +734,10 @@ El sistema incluye un **Asistente IA** integrado directamente en la aplicación 
   "numero_pedido": "25111045",
   "cliente": "SUC LOS ANGELES",
   "bodega": "013-01",
-  "transporte": "Camión PESCO",
+  "transporte": "CamiÃ³n PESCO",
   "estado": "pendiente",
   "urgente": false,
-  "observacion": "Entregar en dirección...",
+  "observacion": "Entregar en direcciÃ³n...",
   "productos": [
     {"codigo": "3502040", "descripcion": "CILINDRO", "cantidad": 5},
     {"codigo": "3502021", "descripcion": "VALVULA", "cantidad": 2}
@@ -757,32 +757,32 @@ El sistema incluye un **Asistente IA** integrado directamente en la aplicación 
 }
 ```
 
-### ✅ MCP Server (Model Context Protocol)
+### â MCP Server (Model Context Protocol)
 
-**Archivo**: `mcp_server.py` (raíz del proyecto)
+**Archivo**: `mcp_server.py` (raÃ­z del proyecto)
 
 **Herramientas expuestas**:
-- `ping()`: Verificación de conectividad
+- `ping()`: VerificaciÃ³n de conectividad
 - `crear_solicitud(payload_json)`: Crear solicitud desde JSON
 
-**Configuración**:
+**ConfiguraciÃ³n**:
 ```bash
 pip install mcp django
 ```
 
-**Ejecución**:
+**EjecuciÃ³n**:
 ```bash
 python mcp_server.py
 ```
 
 **Uso con IA Externa**:
-Permite que asistentes de IA (Claude Desktop, ChatGPT con plugins MCP, etc.) interactúen directamente con el sistema para:
-- ✅ Crear solicitudes automáticamente desde correos o imágenes
+Permite que asistentes de IA (Claude Desktop, ChatGPT con plugins MCP, etc.) interactÃºen directamente con el sistema para:
+- â Crear solicitudes automÃ¡ticamente desde correos o imÃ¡genes
 - Consultar solicitudes pendientes (pendiente)
-- Generar reportes automáticos (pendiente)
-- Análisis predictivo de stock (pendiente)
+- Generar reportes automÃ¡ticos (pendiente)
+- AnÃ¡lisis predictivo de stock (pendiente)
 
-### Configuración de Variables de Entorno
+### ConfiguraciÃ³n de Variables de Entorno
 
 **`.env`**:
 ```bash
@@ -791,19 +791,19 @@ GEMINI_MODEL=gemini-2.5-flash
 IA_API_TOKEN=tu_token_secreto_para_api
 ```
 
-**⚠️ IMPORTANTE**: 
+**â ï¸ IMPORTANTE**: 
 - La API key de Gemini debe obtenerse desde **Google AI Studio** (https://aistudio.google.com)
-- No usar API keys genéricas de Google Cloud (no son compatibles)
+- No usar API keys genÃ©ricas de Google Cloud (no son compatibles)
 
 ---
 
-## ⚡ Optimizaciones de Rendimiento
+## â¡ Optimizaciones de Rendimiento
 
-### 1. Índices en Supabase
+### 1. Ãndices en Supabase
 - Ya definidos en estructura de tablas
 - Mejoran velocidad de consultas en 70-90%
 
-### 2. Cookies para Caché
+### 2. Cookies para CachÃ©
 ```python
 # utils/cache.py
 from django.core.cache import cache
@@ -825,61 +825,61 @@ solicitudes = Solicitud.objects.select_related(
 ).prefetch_related('kpis')
 ```
 
-### 4. Paginación
+### 4. PaginaciÃ³n
 ```python
 # views.py
 from django.core.paginator import Paginator
 
 def lista_solicitudes(request):
     solicitudes = Solicitud.objects.all().order_by('-fecha_solicitud')
-    paginator = Paginator(solicitudes, 25)  # 25 por página
+    paginator = Paginator(solicitudes, 25)  # 25 por pÃ¡gina
     page = paginator.get_page(request.GET.get('page'))
     return render(request, 'solicitudes/lista.html', {'page': page})
 ```
 
 ---
 
-## 📊 Dashboard y Visualización
+## ð Dashboard y VisualizaciÃ³n
 
 ### KPIs Principales (Tarjetas)
-1. **Niveles de Inventario** 📦
+1. **Niveles de Inventario** ð¦
    - Total items en stock
-   - Variación respecto al mes pasado
+   - VariaciÃ³n respecto al mes pasado
 
-2. **Órdenes Pendientes** 📋
-   - Número de órdenes sin procesar
-   - Órdenes urgentes destacadas
+2. **Ãrdenes Pendientes** ð
+   - NÃºmero de Ã³rdenes sin procesar
+   - Ãrdenes urgentes destacadas
 
-3. **Envíos Hoy** 🚚
+3. **EnvÃ­os Hoy** ð
    - Preparados para despacho
-   - En tránsito
+   - En trÃ¡nsito
 
-4. **Alertas Críticas** ⚠️
-   - Stock bajo límite
+4. **Alertas CrÃ­ticas** â ï¸
+   - Stock bajo lÃ­mite
    - Retrasos en despacho
 
 ### Tabla de Actividad Reciente
 - Estados con colores (completado=verde, pendiente=amarillo, cancelado=rojo)
 - Filtros por cliente, estado, fecha
-- Exportación directa a Excel
+- ExportaciÃ³n directa a Excel
 
 ---
 
-## 🏷️ Sistema de Etiquetas de Bultos
+## ð·ï¸ Sistema de Etiquetas de Bultos
 
 ### Funcionalidad
-El módulo de Despacho debe poder generar e imprimir etiquetas para cada bulto embalado.
+El mÃ³dulo de Despacho debe poder generar e imprimir etiquetas para cada bulto embalado.
 
 ### Datos en la Etiqueta (Pendiente definir formato exacto)
-- **Número de bulto**: "Bulto 1 de 3"
-- **Código de producto**: SKU o código interno
-- **Cliente**: Nombre o razón social
+- **NÃºmero de bulto**: "Bulto 1 de 3"
+- **CÃ³digo de producto**: SKU o cÃ³digo interno
+- **Cliente**: Nombre o razÃ³n social
 - **Peso**: En kilogramos
 - **Medidas**: Largo x Ancho x Alto (cm)
 - **Fecha de embalaje**
-- **Código de barras o QR** (opcional): Para tracking
+- **CÃ³digo de barras o QR** (opcional): Para tracking
 
-### Implementación Técnica
+### ImplementaciÃ³n TÃ©cnica
 ```python
 # apps/despacho/etiquetas.py
 from reportlab.lib.pagesizes import A4
@@ -892,16 +892,16 @@ def generar_etiqueta_bulto(solicitud, numero_bulto, total_bultos, peso, medidas)
     filename = f'etiqueta_{solicitud.id}_bulto_{numero_bulto}.pdf'
     c = canvas.Canvas(filename, pagesize=A4)
     
-    # Diseño de la etiqueta (pendiente modelo del usuario)
-    c.drawString(100, 750, f"PESCO - Sistema Logístico")
+    # DiseÃ±o de la etiqueta (pendiente modelo del usuario)
+    c.drawString(100, 750, f"PESCO - Sistema LogÃ­stico")
     c.drawString(100, 700, f"Cliente: {solicitud.cliente}")
     c.drawString(100, 650, f"Producto: {solicitud.codigo} - {solicitud.descripcion}")
     c.drawString(100, 600, f"Bulto: {numero_bulto} de {total_bultos}")
     c.drawString(100, 550, f"Peso: {peso} kg")
     c.drawString(100, 500, f"Medidas: {medidas}")
     
-    # Código de barras (opcional)
-    # Implementar con librería python-barcode
+    # CÃ³digo de barras (opcional)
+    # Implementar con librerÃ­a python-barcode
     
     c.save()
     return filename
@@ -914,16 +914,16 @@ pip install reportlab python-barcode
 
 ### Flujo de Uso
 1. Usuario Despacho ingresa datos de embalaje
-2. Sistema pregunta: "¿Cuántos bultos?"
+2. Sistema pregunta: "Â¿CuÃ¡ntos bultos?"
 3. Sistema genera un PDF con todas las etiquetas
 4. Usuario descarga e imprime las etiquetas
-5. Etiquetas se adhieren físicamente a los bultos
+5. Etiquetas se adhieren fÃ­sicamente a los bultos
 
-**📌 Nota**: El formato final de la etiqueta será proporcionado por el usuario.
+**ð Nota**: El formato final de la etiqueta serÃ¡ proporcionado por el usuario.
 
 ---
 
-## 📦 Requirements
+## ð¦ Requirements
 
 ### base.txt
 ```
@@ -955,7 +955,7 @@ flake8>=6.0
 
 ---
 
-## 🚀 Instalación y Configuración
+## ð InstalaciÃ³n y ConfiguraciÃ³n
 
 ### 1. Clonar repositorio
 ```bash
@@ -979,7 +979,7 @@ pip install -r requirements/development.txt
 ```bash
 cp .env.example .env
 # Editar .env con:
-# - SECRET_KEY (generar uno nuevo para producción)
+# - SECRET_KEY (generar uno nuevo para producciÃ³n)
 # - DEBUG=True (desarrollo)
 # - GEMINI_API_KEY (obtener de https://aistudio.google.com)
 # - GEMINI_MODEL=gemini-2.5-flash
@@ -1009,157 +1009,157 @@ python mcp_server.py
 ```
 
 ### 9. Acceder al Asistente IA
-- Inicia sesión como Admin
-- Ve al menú lateral → "Asistente IA"
+- Inicia sesiÃ³n como Admin
+- Ve al menÃº lateral â "Asistente IA"
 - Pega texto de correo o sube imagen de SAP
-- La IA procesará y creará la solicitud automáticamente
+- La IA procesarÃ¡ y crearÃ¡ la solicitud automÃ¡ticamente
 
 ---
 
-## 🔧 Archivos Clave Implementados
+## ð§ Archivos Clave Implementados
 
 ### Backend
 
 **`solicitudes/models.py`**:
-- `Solicitud`: Modelo principal con auto-generación de números ST
-- `SolicitudDetalle`: Líneas de producto (hasta 45 por solicitud)
-- Métodos helper: `total_codigos()`, `_generar_numero_st()`, etc.
+- `Solicitud`: Modelo principal con auto-generaciÃ³n de nÃºmeros ST
+- `SolicitudDetalle`: LÃ­neas de producto (hasta 45 por solicitud)
+- MÃ©todos helper: `total_codigos()`, `_generar_numero_st()`, etc.
 
 **`solicitudes/services.py`**:
-- `crear_solicitud_desde_payload()`: Función centralizada para crear solicitudes desde JSON
-- Maneja validaciones, normalización de datos, creación de detalles
+- `crear_solicitud_desde_payload()`: FunciÃ³n centralizada para crear solicitudes desde JSON
+- Maneja validaciones, normalizaciÃ³n de datos, creaciÃ³n de detalles
 - Reutilizable desde vistas web, API y MCP
 
 **`solicitudes/views.py`**:
-- `lista_solicitudes`: Listado con filtros por rol y búsqueda
-- `crear_solicitud`: Maneja formulario + formset dinámico
+- `lista_solicitudes`: Listado con filtros por rol y bÃºsqueda
+- `crear_solicitud`: Maneja formulario + formset dinÃ¡mico
 - `detalle_solicitud`: Vista detallada con productos
 - `api_crear_solicitud_ia`: Endpoint REST para agentes IA
 
 **`ia/gemini_client.py`**:
-- `call_gemini_for_solicitud()`: Integración con Gemini 2.5 Flash
-- Procesa texto e imágenes
+- `call_gemini_for_solicitud()`: IntegraciÃ³n con Gemini 2.5 Flash
+- Procesa texto e imÃ¡genes
 - Retorna JSON estructurado para crear solicitudes
 
 **`mcp_server.py`**:
 - Servidor MCP standalone
 - Expone herramientas: `ping()`, `crear_solicitud()`
-- Inicializa Django automáticamente
+- Inicializa Django automÃ¡ticamente
 
 ### Frontend
 
 **`frontend_django/templates/components/sidebar.html`**:
-- Menú dinámico según rol del usuario
+- MenÃº dinÃ¡mico segÃºn rol del usuario
 - Incluye enlace "Asistente IA" para Admin
 
 **`solicitudes/templates/formulario.html`**:
-- Formulario con JavaScript para agregar líneas dinámicamente
-- Inicia con 5 líneas, expandible hasta 45
+- Formulario con JavaScript para agregar lÃ­neas dinÃ¡micamente
+- Inicia con 5 lÃ­neas, expandible hasta 45
 
 **`solicitudes/templates/lista.html`**:
 - Tabla responsiva con columnas optimizadas
-- Búsqueda por número de pedido/ST
-- Muestra contador de códigos por solicitud
+- BÃºsqueda por nÃºmero de pedido/ST
+- Muestra contador de cÃ³digos por solicitud
 
-### Configuración
+### ConfiguraciÃ³n
 
 **`backend/settings.py`**:
-- Configuración de Gemini (`GEMINI_API_KEY`, `GEMINI_MODEL`)
+- ConfiguraciÃ³n de Gemini (`GEMINI_API_KEY`, `GEMINI_MODEL`)
 - Token API para endpoint IA (`IA_API_TOKEN`)
 - CORS y REST Framework configurados
 - Base de datos configurada (SQLite dev, Supabase pendiente)
 
 ---
 
-## 📌 Próximos pasos
+## ð PrÃ³ximos pasos
 
-### Fase 1: Configuración Inicial ⚙️
+### Fase 1: ConfiguraciÃ³n Inicial âï¸
 - [x] Definir estructura de tablas en Supabase  
 - [x] Definir roles y flujo de trabajo
 - [x] Crear proyecto Django con arquitectura modular  
 - [x] Configurar base de datos (SQLite para desarrollo, Supabase pendiente)
-- [x] Implementar sistema de autenticación por roles  
+- [x] Implementar sistema de autenticaciÃ³n por roles  
 
-### Fase 2: Desarrollo del Core 🏗️
+### Fase 2: Desarrollo del Core ðï¸
 - [x] Desarrollar dashboard principal con Bootstrap 5  
-- [x] Implementar modelo de Solicitudes con múltiples productos
-- [x] Crear formularios de ingreso con validación y formsets dinámicos
+- [x] Implementar modelo de Solicitudes con mÃºltiples productos
+- [x] Crear formularios de ingreso con validaciÃ³n y formsets dinÃ¡micos
 - [x] Aplicar paleta de colores corporativa (azul turquesa)
-- [x] Implementar auto-generación de números ST
+- [x] Implementar auto-generaciÃ³n de nÃºmeros ST
 - [x] Sistema de cambio de rol desde UI (Admin)
 
-### Fase 3: Módulos Operativos 📦🚚
-- [ ] Desarrollar módulo de Bodega (registro de transferencias)
-- [ ] Desarrollar módulo de Despacho (embalaje, peso, medidas)
-- [ ] Implementar generación de etiquetas de bultos (PDF)
-- [ ] Desarrollar módulo de Guías SAP (solo Admin)
+### Fase 3: MÃ³dulos Operativos ð¦ð
+- [ ] Desarrollar mÃ³dulo de Bodega (registro de transferencias)
+- [ ] Desarrollar mÃ³dulo de Despacho (embalaje, peso, medidas)
+- [ ] Implementar generaciÃ³n de etiquetas de bultos (PDF)
+- [ ] Desarrollar mÃ³dulo de GuÃ­as SAP (solo Admin)
 
-### Fase 4: Reportes y Analytics 📊
-- [ ] Implementar cálculo automático de KPIs
-- [ ] Crear sistema de exportación de reportes a Excel
-- [x] Dashboard con KPIs básicos por rol
-- [ ] Configurar carga de stock desde Excel con caché
+### Fase 4: Reportes y Analytics ð
+- [ ] Implementar cÃ¡lculo automÃ¡tico de KPIs
+- [ ] Crear sistema de exportaciÃ³n de reportes a Excel
+- [x] Dashboard con KPIs bÃ¡sicos por rol
+- [ ] Configurar carga de stock desde Excel con cachÃ©
 
-### Fase 5: Optimización y AI 🤖
+### Fase 5: OptimizaciÃ³n y AI ð¤
 - [x] Integrar MCP Server para IA  
 - [x] Implementar Asistente IA integrado en web (Gemini 2.5)
 - [x] API endpoint para agentes IA externos
-- [x] Optimizar queries con índices en modelos
-- [ ] Implementar sistema de cookies para caché
+- [x] Optimizar queries con Ã­ndices en modelos
+- [ ] Implementar sistema de cookies para cachÃ©
 
-### Fase 6: Testing y Producción 🚀
+### Fase 6: Testing y ProducciÃ³n ð
 - [ ] Probar flujo completo con usuarios internos  
-- [x] Ajustes de UX/UI según feedback (listado, formularios dinámicos)
-- [ ] Configurar conexión Supabase en producción
-- [ ] Deploy en Render (producción)  
-- [x] Documentación técnica actualizada
+- [x] Ajustes de UX/UI segÃºn feedback (listado, formularios dinÃ¡micos)
+- [ ] Configurar conexiÃ³n Supabase en producciÃ³n
+- [ ] Deploy en Render (producciÃ³n)  
+- [x] DocumentaciÃ³n tÃ©cnica actualizada
 
 ---
 
-## 📋 Resumen Ejecutivo del Sistema
+## ð Resumen Ejecutivo del Sistema
 
-### 🎯 Problema
-Registro manual en Excel genera ineficiencias, duplicidad y errores en la operación logística de PESCO.
+### ð¯ Problema
+Registro manual en Excel genera ineficiencias, duplicidad y errores en la operaciÃ³n logÃ­stica de PESCO.
 
-### 💡 Solución
-Sistema web Django con Supabase que digitaliza el flujo completo: Solicitud → Bodega → Despacho → Guía SAP.
+### ð¡ SoluciÃ³n
+Sistema web Django con Supabase que digitaliza el flujo completo: Solicitud â Bodega â Despacho â GuÃ­a SAP.
 
-### 👥 Usuarios (3 Roles)
-1. **Admin**: Acceso total, emite guías SAP, puede reemplazar cualquier rol
+### ð¥ Usuarios (3 Roles)
+1. **Admin**: Acceso total, emite guÃ­as SAP, puede reemplazar cualquier rol
 2. **Bodega**: Registra transferencias a despacho
 3. **Despacho**: Embala, pesa, mide y genera etiquetas
 
-### 🔄 Flujo Simplificado
+### ð Flujo Simplificado
 ```
-Admin crea solicitud → Bodega registra transferencia → 
-Despacho embala y etiqueta → Admin emite guía SAP → Despachado ✅
+Admin crea solicitud â Bodega registra transferencia â 
+Despacho embala y etiqueta â Admin emite guÃ­a SAP â Despachado â
 ```
 
-### 🎨 Tecnologías
+### ð¨ TecnologÃ­as
 - **Backend**: Python + Django 5 + Supabase (PostgreSQL) / SQLite (desarrollo)
 - **Frontend**: Bootstrap 5 + JavaScript + Django Templates
 - **IA**: Gemini 2.5 Flash (`google-generativeai`)
 - **Extras**: MCP Server (IA), ReportLab (etiquetas PDF), Pandas (Excel)
 
-### 📈 Beneficios Implementados
-- ✅ Trazabilidad completa de solicitudes
-- ✅ Eliminación de duplicidad de registros
-- ✅ **Asistente IA integrado** para procesar correos e imágenes automáticamente
-- ✅ **Múltiples productos por solicitud** (hasta 45 líneas)
-- ✅ **Auto-generación de números ST** con reinicio anual
-- ✅ Dashboard con KPIs por rol
-- ✅ Acceso por roles (seguridad)
-- ✅ Formularios dinámicos con JavaScript
-- ✅ API REST para integraciones externas
+### ð Beneficios Implementados
+- â Trazabilidad completa de solicitudes
+- â EliminaciÃ³n de duplicidad de registros
+- â **Asistente IA integrado** para procesar correos e imÃ¡genes automÃ¡ticamente
+- â **MÃºltiples productos por solicitud** (hasta 45 lÃ­neas)
+- â **Auto-generaciÃ³n de nÃºmeros ST** con reinicio anual
+- â Dashboard con KPIs por rol
+- â Acceso por roles (seguridad)
+- â Formularios dinÃ¡micos con JavaScript
+- â API REST para integraciones externas
 
-### 📈 Beneficios Pendientes
-- ⏳ KPIs automáticos (lead time, días en despacho)
-- ⏳ Reportes exportables a Excel
-- ⏳ Generación automática de etiquetas de bultos
+### ð Beneficios Pendientes
+- â³ KPIs automÃ¡ticos (lead time, dÃ­as en despacho)
+- â³ Reportes exportables a Excel
+- â³ GeneraciÃ³n automÃ¡tica de etiquetas de bultos
 
 ---
 
-## 📞 Contacto y Soporte
+## ð Contacto y Soporte
 
 **Administrador del Sistema**: [Tu nombre]  
 **Email**: admin@pesco.cl  
@@ -1167,36 +1167,49 @@ Despacho embala y etiqueta → Admin emite guía SAP → Despachado ✅
 
 ---
 
-**Versión del Documento**: 3.0  
-**Última Actualización**: Diciembre 2024  
-**Estado**: ✅ **MVP en desarrollo activo** - Módulo de Solicitudes + IA implementado
+**VersiÃ³n del Documento**: 3.0  
+**Ãltima ActualizaciÃ³n**: Diciembre 2024  
+**Estado**: â **MVP en desarrollo activo** - MÃ³dulo de Solicitudes + IA implementado
 
 ---
 
-## 📝 Changelog de Implementación
+## ð Changelog de ImplementaciÃ³n
 
-### Versión 3.0 (Diciembre 2024) - Módulo de Solicitudes + IA
-- ✅ Sistema de autenticación con roles (Admin, Bodega, Despacho)
-- ✅ Modelo `Solicitud` completo con todos los campos
-- ✅ Modelo `SolicitudDetalle` para múltiples productos (hasta 45 líneas)
-- ✅ Auto-generación de números ST (`ST-AAAA-###`) con reinicio anual
-- ✅ Formularios dinámicos con formsets (inicia con 5 líneas, expandible)
-- ✅ Dashboard con KPIs por rol
-- ✅ Listado de solicitudes con búsqueda por pedido/ST
-- ✅ Vista de detalle de solicitud
-- ✅ **Asistente IA integrado** (`/ia/chat/`) con Gemini 2.5 Flash
-- ✅ Procesamiento de texto (correos) e imágenes (capturas SAP)
-- ✅ API endpoint para agentes IA externos (`/solicitudes/api/ia/crear/`)
-- ✅ MCP Server implementado (`mcp_server.py`)
-- ✅ Capa de servicios (`solicitudes/services.py`) para lógica reutilizable
-- ✅ Cambio de rol desde UI (Admin)
-- ✅ Templates Bootstrap 5 con diseño profesional
-- ✅ Sistema de migraciones Django configurado
+### VersiÃ³n 3.0 (Diciembre 2024) - MÃ³dulo de Solicitudes + IA
+- â Sistema de autenticaciÃ³n con roles (Admin, Bodega, Despacho)
+- â Modelo `Solicitud` completo con todos los campos
+- â Modelo `SolicitudDetalle` para mÃºltiples productos (hasta 45 lÃ­neas)
+- â Auto-generaciÃ³n de nÃºmeros ST (`ST-AAAA-###`) con reinicio anual
+- â Formularios dinÃ¡micos con formsets (inicia con 5 lÃ­neas, expandible)
+- â Dashboard con KPIs por rol
+- â Listado de solicitudes con bÃºsqueda por pedido/ST
+- â Vista de detalle de solicitud
+- â **Asistente IA integrado** (`/ia/chat/`) con Gemini 2.5 Flash
+- â Procesamiento de texto (correos) e imÃ¡genes (capturas SAP)
+- â API endpoint para agentes IA externos (`/solicitudes/api/ia/crear/`)
+- â MCP Server implementado (`mcp_server.py`)
+- â Capa de servicios (`solicitudes/services.py`) para lÃ³gica reutilizable
+- â Cambio de rol desde UI (Admin)
+- â Templates Bootstrap 5 con diseÃ±o profesional
+- â Sistema de migraciones Django configurado
 
-### Próximas Funcionalidades
-- ⏳ Módulo de Bodega (transferencias)
-- ⏳ Módulo de Despacho (embalaje, etiquetas)
-- ⏳ Módulo de Guías SAP
-- ⏳ Exportación de reportes a Excel
-- ⏳ Cálculo automático de KPIs
-- ⏳ Conexión Supabase en producción
+### PrÃ³ximas Funcionalidades
+- â³ MÃ³dulo de Bodega (transferencias)
+- â³ MÃ³dulo de Despacho (embalaje, etiquetas)
+- â³ MÃ³dulo de GuÃ­as SAP
+- â³ ExportaciÃ³n de reportes a Excel
+- â³ CÃ¡lculo automÃ¡tico de KPIs
+- â³ ConexiÃ³n Supabase en producciÃ³n
+
+### Pendientes Conocidos
+- **Etiquetas de Bulto:** La etiqueta térmica (10x14cm) tiene una limitante física de espacio. Si un bulto consolida más de 12-15 solicitudes distintas, la tabla empujará el contenido inferior fuera de la etiqueta. Se requiere implementar auto-shrink o anexo en el futuro.
+
+### Versión 4.0 (Mayo 2026) - Sistema de Embalaje Parcial y Lotes (Crossdocking)
+- ✅ **Embalaje Parcial (Fraccionamiento):** Permite separar unidades de un mismo código en bultos distintos.
+- ✅ **Creación Múltiple (Modo Lote):** Algoritmo de "Regla del Resto" para dividir grandes cantidades automáticamente.
+- ✅ **Clonado de Medidas:** Copia automática de peso y dimensiones a todos los bultos del lote.
+- ✅ **Impresión en Lote:** Vista de impresión continua para etiquetas térmicas (10x14cm).
+- ✅ **Seguridad por Roles:** Campos de transporte exclusivos para Administradores.
+- ✅ **Validaciones Robustas:** Medidas obligatorias en lotes y bloqueo de pedidos completados.
+- ✅ **Optimización JSON:** Fix para números Decimales en etiquetas masivas.
+

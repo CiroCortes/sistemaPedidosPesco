@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impresión de Lote - {{ bultos_data|length }} Bultos</title>
+    <style>
+        @media print {
+            @page {
+                size: 100mm 140mm portrait;
+                margin: 0;
+            }
+            .no-print { display: none !important; }
+            .etiqueta-page {
+                width: 100mm;
+                height: 140mm;
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+                page-break-after: always;
+            }
+            .etiqueta-page:last-child {
+                page-break-after: auto;
+            }
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            -webkit-print-color-adjust: exact;
+        }
+
+        .etiqueta-page {
+            width: 100mm;
+            height: 140mm;
+            padding: 4mm;
+            border: 1px solid #000;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+            margin: 10px auto; /* Para centrar en vista previa */
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            border-bottom: 3px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 20pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+        }
+        
+        .header .codigo-bulto {
+            font-size: 26pt;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            color: #000;
+            letter-spacing: 1px;
+        }
+        
+        .numero-bulto {
+            font-size: 18pt;
+            font-weight: bold;
+            text-align: center;
+            margin: 5px 0 15px 0;
+            padding: 4px 0;
+            border-bottom: 2px solid #000;
+        }
+        
+        .info-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .info-row {
+            margin: 8px 0;
+            font-size: 12pt;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            display: inline-block;
+            min-width: 60px;
+        }
+        
+        .info-value {
+            font-size: 12pt;
+        }
+        
+        .solicitud-info {
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 8px 0;
+        }
+        
+        .solicitud-info .label {
+            text-align: left;
+            margin-bottom: 4px;
+            font-weight: bold;
+            color: #000;
+            font-size: 11pt;
+        }
+        
+        .solicitud-info table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11pt;
+            text-align: left;
+        }
+
+        .solicitud-info table th {
+            padding: 2px;
+            border-bottom: 2px solid #000;
+            font-size: 9pt;
+        }
+
+        .solicitud-info table td {
+            padding: 6px 2px;
+            border-bottom: 1px solid #ccc;
+        }
+        
+        .medidas-section {
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+            padding: 8px 0;
+            margin: 10px 0;
+            text-align: center;
+        }
+        
+        .medidas-section .medidas {
+            font-size: 14pt;
+            font-weight: bold;
+        }
+        
+        .footer {
+            border-top: 2px solid #000;
+            padding-top: 8px;
+            margin-top: auto;
+            text-align: center;
+            font-size: 9pt;
+        }
+        
+        .no-print {
+            text-align: center;
+            padding: 20px;
+            background-color: #333;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .no-print button {
+            padding: 10px 20px;
+            font-size: 14pt;
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-weight: bold;
+        }
+
+        .no-print button:hover {
+            background-color: #0b5ed7;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <h2>Lote de {{ bultos_count }} Etiquetas de Bulto</h2>
+        <p style="margin-bottom: 10px;">Tamaño físico: 10cm x 14cm</p>
+        <button onclick="window.print()">🖨️ Imprimir Todas</button>
+        <button onclick="window.close()" style="background-color: #6c757d;">Cerrar</button>
+    </div>
+    
+    <div id="contenedor-etiquetas">
+        <!-- Las etiquetas se generan dinámicamente aquí -->
+    </div>
+
+    <script>
+        const bultos = {{ bultos_json|safe }};
+        const contenedor = document.getElementById('contenedor-etiquetas');
+        
+        const now = new Date();
+        const fecha = now.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+        bultos.forEach(bulto => {
+            const numeroFormato = `Bulto ${bulto.numero_bulto} de ${bulto.total_bultos}`;
+            const medidas = `${bulto.largo} x ${bulto.ancho} x ${bulto.alto} cm`;
+            
+            const solicitudes = JSON.parse(bulto.solicitudes_json || '[]');
+            let solicitudesHTML = '';
+            
+            if (solicitudes.length > 0) {
+                solicitudesHTML = `
+                    <div class="solicitud-info">
+                        <div class="label">Solicitudes Asociadas:</div>
+                        <table>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Número</th>
+                                <th>Destino</th>
+                            </tr>
+                            ${solicitudes.map(s => `
+                                <tr>
+                                    <td style="font-weight: bold;">${s.tipo}</td>
+                                    <td style="font-weight: bold;">${s.numero}</td>
+                                    <td>${s.cliente}</td>
+                                </tr>
+                            `).join('')}
+                        </table>
+                    </div>
+                `;
+            } else {
+                solicitudesHTML = `
+                    <div class="solicitud-info">
+                        <div class="label">Solicitudes Asociadas:</div>
+                        <div style="font-size: 11pt; padding: 6px 0;">Sin solicitudes asociadas</div>
+                    </div>
+                `;
+            }
+
+            const html = `
+                <div class="etiqueta-page">
+                    <div class="header">
+                        <h1>PESCO</h1>
+                        <div class="codigo-bulto">${bulto.codigo}</div>
+                    </div>
+                    
+                    <div class="numero-bulto">
+                        ${numeroFormato}
+                    </div>
+                    
+                    ${solicitudesHTML}
+                    
+                    <div class="info-section">
+                        <div>
+                            <div class="medidas-section">
+                                <div style="font-size: 10pt; color: #666; margin-bottom: 3px;">Medidas</div>
+                                <div class="medidas">${medidas}</div>
+                            </div>
+                            
+                            <div class="info-row">
+                                <span class="info-label">Peso:</span>
+                                <span class="info-value">${bulto.peso} kg</span>
+                            </div>
+                            
+                            <div class="info-row">
+                                <span class="info-label">Transporte:</span>
+                                <span class="info-value">${bulto.transportista}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="footer">
+                        <div style="font-weight: bold; margin-bottom: 3px;">${fecha}</div>
+                        <div style="font-size: 8pt; color: #666;">Sistema PESCO - Gestión de Despacho</div>
+                    </div>
+                </div>
+            `;
+            
+            contenedor.innerHTML += html;
+        });
+
+        // Opcional: auto-abrir ventana de impresión si quisieramos
+        // setTimeout(() => { window.print(); }, 500);
+    </script>
+</body>
+</html>

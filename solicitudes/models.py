@@ -335,6 +335,26 @@ class Solicitud(models.Model):
             return 1
         return count
 
+    def get_bultos(self):
+        """
+        Retorna todos los bultos únicos asociados a la solicitud
+        (directamente o a través de sus detalles).
+        Esta función está optimizada para aprovechar prefetch_related('bultos', 'detalles__bulto').
+        """
+        bultos_set = {}
+        
+        # 1. Bultos asociados vía SolicitudDetalle (nuevo modelo)
+        for detalle in self.detalles.all():
+            if detalle.bulto_id:
+                # Si 'detalles__bulto' está en prefetch_related, detalle.bulto no hace query extra
+                bultos_set[detalle.bulto_id] = detalle.bulto
+                
+        # 2. Bultos asociados directamente (modelo legacy / directo)
+        for bulto in self.bultos.all():
+            bultos_set[bulto.id] = bulto
+            
+        return list(bultos_set.values())
+
 
 class SolicitudDetalle(models.Model):
     """

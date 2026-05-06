@@ -391,6 +391,8 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         solicitudes_base = solicitudes_base.filter(
             Q(bultos__transportista=transporte_filtro) | 
             Q(bultos__transportista_extra=transporte_filtro) |
+            Q(detalles__bulto__transportista=transporte_filtro) |
+            Q(detalles__bulto__transportista_extra=transporte_filtro) |
             Q(transporte=transporte_filtro)
         ).distinct()
     
@@ -398,6 +400,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
     # PRECARGAR TODO: detalles y bultos en una sola query
     solicitudes_completas = solicitudes_base.prefetch_related(
         'detalles',
+        'detalles__bulto',
         'bultos'
     )
     
@@ -417,7 +420,9 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         detalles_bodegas = detalles_bodegas.filter(
             Q(solicitud__transporte=transporte_filtro) |
             Q(solicitud__bultos__transportista=transporte_filtro) |
-            Q(solicitud__bultos__transportista_extra=transporte_filtro)
+            Q(solicitud__bultos__transportista_extra=transporte_filtro) |
+            Q(bulto__transportista=transporte_filtro) |
+            Q(bulto__transportista_extra=transporte_filtro)
         ).distinct()
     
     detalles_bodegas_list = list(detalles_bodegas)
@@ -433,14 +438,17 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         created_at__gte=fecha_inicio
     ).select_related('solicitante').prefetch_related(
         'bultos',
-        'detalles'
+        'detalles',
+        'detalles__bulto'
     )
     
     if transporte_filtro:
         solicitudes_listas = solicitudes_listas.filter(
             Q(transporte=transporte_filtro) |
             Q(bultos__transportista=transporte_filtro) |
-            Q(bultos__transportista_extra=transporte_filtro)
+            Q(bultos__transportista_extra=transporte_filtro) |
+            Q(detalles__bulto__transportista=transporte_filtro) |
+            Q(detalles__bulto__transportista_extra=transporte_filtro)
         ).distinct()
     
     solicitudes_listas_list = list(solicitudes_listas)
@@ -464,7 +472,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         fecha_fin_prep_real = max(fechas_prep) if fechas_prep else None
 
         bultos_validos = [
-            b for b in solicitud.bultos.all()
+            b for b in solicitud.get_bultos()
             if b.estado != 'cancelado'
         ]
         fechas_emb = [b.fecha_embalaje for b in bultos_validos if b.fecha_embalaje]
@@ -683,7 +691,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
         transporte = (solicitud.transporte or '').strip().upper()
         kilos_solicitud = Decimal('0.00')
         
-        for bulto in solicitud.bultos.all():
+        for bulto in solicitud.get_bultos():
             if bulto.largo_cm and bulto.ancho_cm and bulto.alto_cm and \
                bulto.largo_cm > 0 and bulto.ancho_cm > 0 and bulto.alto_cm > 0:
                 volumen_cm3 = bulto.largo_cm * bulto.ancho_cm * bulto.alto_cm
@@ -949,7 +957,7 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             fecha_preparacion_solicitud = detalle_mas_reciente.fecha_preparacion
         
         # Determinar transporte desde bultos o solicitud
-        bultos_solicitud = list(solicitud.bultos.all())
+        bultos_solicitud = solicitud.get_bultos()
         if bultos_solicitud:
             # Tomar el primer bulto con transporte definido
             for bulto in bultos_solicitud:

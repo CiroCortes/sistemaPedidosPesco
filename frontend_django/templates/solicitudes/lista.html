@@ -139,7 +139,7 @@
                                 </span>
                             </td>
                             <td>
-                                {% with bultos=solicitud.bultos.all %}
+                                {% with bultos=solicitud.get_bultos %}
                                 {% if bultos %}
                                     {% for bulto in bultos %}
                                     <a href="{% url 'despacho:detalle_bulto' bulto.id %}" class="badge bg-primary text-decoration-none me-1" title="{{ bulto.codigo }}">

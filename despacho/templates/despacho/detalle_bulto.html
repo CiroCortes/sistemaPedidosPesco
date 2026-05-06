@@ -204,10 +204,8 @@
     function generarEtiquetaBulto() {
         try {
             const bultoCodigo = '{{ bulto.codigo|escapejs }}';
-            const solicitudId = {{ bulto.solicitud.id|default:"null" }};
             const numeroBulto = {{ numero_bulto|default:"null" }};
             const totalBultos = {{ total_bultos|default:"null" }};
-            const cliente = "{{ bulto.solicitud.cliente|escapejs|default:'-' }}";
             const peso = parseFloat('{{ bulto.peso_total|default:"0" }}') || 0;
             const largo = parseFloat('{{ bulto.largo_cm|default:"0" }}') || 0;
             const ancho = parseFloat('{{ bulto.ancho_cm|default:"0" }}') || 0;
@@ -216,13 +214,47 @@
             const tipo = '{{ bulto.get_tipo_display|escapejs }}';
             const transportista = '{{ bulto.get_transportista_display|escapejs }}';
             
+            // Obtener array de solicitudes
+            const solicitudes = JSON.parse('{{ solicitudes_etiqueta_json|escapejs }}' || '[]');
+            
             // Formatear número de bulto
-            const numeroFormato = numeroBulto && totalBultos ? `${numeroBulto}-${totalBultos}` : '-';
+            const numeroFormato = numeroBulto && totalBultos ? `Bulto ${numeroBulto} de ${totalBultos}` : 'Bulto Único';
             
             // Fecha actual
             const now = new Date();
             const fecha = now.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
             
+            // Generar HTML de solicitudes
+            let solicitudesHTML = '';
+            if (solicitudes.length > 0) {
+                solicitudesHTML = `
+                    <div class="solicitud-info" style="border: none; background: transparent; padding: 0;">
+                        <div class="label" style="text-align: left; margin-bottom: 4px; font-weight: bold; color: #000; font-size: 11pt;">Solicitudes Asociadas:</div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11pt; text-align: left;">
+                            <tr style="border-bottom: 2px solid #000; font-size: 9pt;">
+                                <th style="padding: 2px;">Tipo</th>
+                                <th style="padding: 2px;">Número</th>
+                                <th style="padding: 2px;">Destino</th>
+                            </tr>
+                            ${solicitudes.map(s => `
+                                <tr style="border-bottom: 1px solid #ccc;">
+                                    <td style="padding: 6px 2px; font-weight: bold;">${s.tipo}</td>
+                                    <td style="padding: 6px 2px; font-weight: bold;">${s.numero}</td>
+                                    <td style="padding: 6px 2px;">${s.cliente}</td>
+                                </tr>
+                            `).join('')}
+                        </table>
+                    </div>
+                `;
+            } else {
+                solicitudesHTML = `
+                    <div class="solicitud-info" style="border: none; background: transparent; padding: 0;">
+                        <div class="label" style="text-align: left; margin-bottom: 4px; font-weight: bold; color: #000; font-size: 11pt;">Solicitudes Asociadas:</div>
+                        <div style="font-size: 11pt; padding: 6px 0;">Sin solicitudes asociadas</div>
+                    </div>
+                `;
+            }
+
             // Generar HTML de la etiqueta (10cm x 14cm = 100mm x 140mm)
             const htmlEtiqueta = `
 <!DOCTYPE html>
@@ -288,13 +320,12 @@
         }
         
         .numero-bulto {
-            font-size: 32pt;
+            font-size: 18pt;
             font-weight: bold;
             text-align: center;
-            margin: 10px 0;
-            padding: 8px;
-            background-color: #f0f0f0;
-            border: 2px solid #000;
+            margin: 5px 0 15px 0;
+            padding: 4px 0;
+            border-bottom: 2px solid #000;
         }
         
         .info-section {
@@ -324,7 +355,7 @@
             padding: 8px;
             border: 1px solid #666;
             margin: 8px 0;
-            text-align: center;
+            min-height: 50px;
         }
         
         .solicitud-info .label {
@@ -335,6 +366,7 @@
         .solicitud-info .value {
             font-size: 16pt;
             font-weight: bold;
+            text-align: center;
         }
         
         .medidas-section {
@@ -401,22 +433,10 @@
         ${numeroFormato}
     </div>
     
-    <div class="solicitud-info">
-        <div class="label">Solicitud N°</div>
-        <div class="value">#${solicitudId || '-'}</div>
-    </div>
+    ${solicitudesHTML}
     
     <div class="info-section">
         <div>
-            <div class="info-row">
-                <span class="info-label">Cliente:</span>
-                <span class="info-value">${cliente || '-'}</span>
-            </div>
-            
-            <div class="info-row">
-                <span class="info-label">Tipo:</span>
-                <span class="info-value">${tipo}</span>
-            </div>
             
             <div class="medidas-section">
                 <div style="font-size: 10pt; color: #666; margin-bottom: 3px;">Medidas</div>
@@ -432,11 +452,6 @@
                 <span class="info-label">Transporte:</span>
                 <span class="info-value">${transportista}</span>
             </div>
-        </div>
-        
-        <div class="barcode-area">
-            <div style="font-size: 8pt; color: #999; margin-bottom: 5px;">Código de Barras</div>
-            <div style="font-family: 'Courier New', monospace; font-size: 10pt;">${bultoCodigo}</div>
         </div>
     </div>
     
