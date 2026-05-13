@@ -833,6 +833,12 @@
             })
             .finally(() => setLoading(false));
     });
+
+    // Auto-refresh cada 2 minutos
+    let refreshInterval = setInterval(() => {
+        if (document.querySelector('.modal.show')) return;
+        location.reload();
+    }, 120000);
 </script>
 {% endblock %}
 
