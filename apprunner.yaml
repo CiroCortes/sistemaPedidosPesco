@@ -6,7 +6,7 @@ build:
       - pip3 install -r requirements.txt
       - python3 manage.py collectstatic --noinput
 run:
-  command: sh -c "gunicorn dms_platform.wsgi:application --bind 0.0.0.0:$PORT --workers 2"
+  command: sh -c "gunicorn dms_platform.wsgi:application --bind 0.0.0.0:$PORT --workers 1"
   network:
     port: 8000
     env: PORT
