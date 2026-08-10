@@ -1,0 +1,15 @@
+version: 1.0
+runtime: python3
+build:
+  commands:
+    build:
+      - pip install -r requirements.txt
+      - python manage.py collectstatic --noinput
+run:
+  command: gunicorn dms_platform.wsgi:application --bind 0.0.0.0:$PORT --workers 2
+  network:
+    port: 8000
+    env: PORT
+  env:
+    - name: DJANGO_SETTINGS_MODULE
+      value: dms_platform.settings

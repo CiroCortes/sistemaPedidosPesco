@@ -1,0 +1,4 @@
+Django==5.1.4
+gunicorn==23.0.0
+whitenoise==6.8.2
+# psycopg2-binary: agregar cuando se conecte la RDS real (este placeholder usa SQLite)
