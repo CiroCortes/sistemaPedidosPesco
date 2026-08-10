@@ -13,3 +13,14 @@ run:
   env:
     - name: DJANGO_SETTINGS_MODULE
       value: dms_platform.settings
+  secrets:
+    - name: DB_HOST
+      value-from: "arn:aws:secretsmanager:us-east-1:891377130720:secret:dms-platform/rds/credentials-irYYEa:host::"
+    - name: DB_PORT
+      value-from: "arn:aws:secretsmanager:us-east-1:891377130720:secret:dms-platform/rds/credentials-irYYEa:port::"
+    - name: DB_NAME
+      value-from: "arn:aws:secretsmanager:us-east-1:891377130720:secret:dms-platform/rds/credentials-irYYEa:dbname::"
+    - name: DB_USER
+      value-from: "arn:aws:secretsmanager:us-east-1:891377130720:secret:dms-platform/rds/credentials-irYYEa:username::"
+    - name: DB_PASSWORD
+      value-from: "arn:aws:secretsmanager:us-east-1:891377130720:secret:dms-platform/rds/credentials-irYYEa:password::"
