@@ -76,7 +76,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('solicitudes', '0016_alter_solicitud_tipo'),
-        ('despacho', '0003_add_fecha_embalaje'),
+        ('despacho', '0004_change_solicitudes_to_foreignkey'),
     ]
 
     operations = [
