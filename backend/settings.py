@@ -252,7 +252,11 @@ IA_API_TOKEN = os.getenv('IA_API_TOKEN', '')
 # Security Settings para Producción
 # Estas configuraciones se activan automáticamente cuando DEBUG=False
 
-# HTTPS/SSL (Render lo maneja automáticamente)
+# HTTPS/SSL - nginx termina TLS y reenvía por HTTP interno; hay que confiar
+# en el header que agrega para que Django sepa que la conexión real es HTTPS
+# (si no, SECURE_SSL_REDIRECT causa un loop infinito de redirects)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 if not DEBUG:
     # Desactivable vía env var mientras no haya dominio/TLS (ver pendiente de Route53+ACM)
     SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True') == 'True'
