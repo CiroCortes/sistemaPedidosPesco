@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2 mb-0">{{ titulo }}</h1>
+    <a href="{% url 'lista_usuarios' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">
+                        {{ form.non_field_errors }}
+                    </div>
+                    {% endif %}
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Usuario</label>
+                            {{ form.username }}
+                            {{ form.username.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Rol</label>
+                            {{ form.rol }}
+                            {{ form.rol.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre completo</label>
+                            {{ form.nombre_completo }}
+                            {{ form.nombre_completo.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Correo</label>
+                            {{ form.email }}
+                            {{ form.email.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Teléfono</label>
+                            {{ form.telefono }}
+                            {{ form.telefono.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-4">
+                                {{ form.is_active }}
+                                <label class="form-check-label">Usuario activo</label>
+                                {{ form.is_active.errors }}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if modo_creacion %}
+                    <hr>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Contraseña</label>
+                            {{ form.password1 }}
+                            {{ form.password1.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Confirmar contraseña</label>
+                            {{ form.password2 }}
+                            {{ form.password2.errors }}
+                        </div>
+                    </div>
+                    {% else %}
+                    <hr>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nueva contraseña</label>
+                            {{ form.nueva_password1 }}
+                            <div class="form-text">Déjalo en blanco para mantener la contraseña actual.</div>
+                            {{ form.nueva_password1.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Confirmar nueva contraseña</label>
+                            {{ form.nueva_password2 }}
+                            {{ form.nueva_password2.errors }}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <hr>
+                    <div>
+                        <label class="form-label">Bodegas asignadas</label>
+                        <div class="row">
+                            {% for checkbox in form.bodegas_asignadas %}
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    {{ checkbox.tag }}
+                                    <label class="form-check-label">{{ checkbox.choice_label }}</label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {{ form.bodegas_asignadas.errors }}
+                    </div>
+
+                    <div class="mt-4 d-flex justify-content-end gap-2">
+                        <a href="{% url 'lista_usuarios' %}" class="btn btn-outline-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-1"></i> Guardar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Consejos rápidos</h5>
+                <ul class="small text-muted mb-0">
+                    <li>Solo los usuarios activos pueden iniciar sesión.</li>
+                    <li>Los usuarios con rol Bodega solo verán las bodegas asignadas.</li>
+                    <li>Para repartir tareas, asigna varias bodegas a un mismo usuario.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

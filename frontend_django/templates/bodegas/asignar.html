@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}Asignar Bodegas - {{ usuario.username }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Asignar Bodegas</h1>
+    <a href="{% url 'lista_usuarios_bodegas' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                Usuario: <strong>{{ usuario.nombre_completo|default:usuario.username }}</strong>
+                <span class="badge bg-secondary ms-2">{{ usuario.get_rol_display }}</span>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-4">
+                        <label class="form-label mb-3">{{ form.bodegas_asignadas.label }}</label>
+                        <div class="row g-3">
+                            {% for checkbox in form.bodegas_asignadas %}
+                            <div class="col-md-6">
+                                <div class="form-check p-3 border rounded hover-bg-light">
+                                    {{ checkbox.tag }}
+                                    <label class="form-check-label ms-2 w-100 cursor-pointer"
+                                        for="{{ checkbox.id_for_label }}">
+                                        {{ checkbox.choice_label }}
+                                    </label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% if form.bodegas_asignadas.help_text %}
+                        <div class="form-text mt-2">{{ form.bodegas_asignadas.help_text }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-flex justify-content-end mt-4">
+                        <a href="{% url 'lista_usuarios_bodegas' %}" class="btn btn-secondary me-2">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Guardar Asignación
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .hover-bg-light:hover {
+        background-color: #f8f9fa;
+    }
+
+    .cursor-pointer {
+        cursor: pointer;
+    }
+</style>
+{% endblock %}

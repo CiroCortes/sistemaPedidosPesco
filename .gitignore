@@ -1,9 +1,64 @@
-venv/
-env/
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+*~
+
+# Django
+*.log
+*.pot
 *.pyc
-.env
-.env.*
 db.sqlite3
+db.sqlite3-journal
+media/
 staticfiles/
+
+# Environment variables (NO incluir .env.example en .gitignore - debe estar en el repo)
+.env
+.env.local
+.env.*.local
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos de prueba y temporales
+*.bak
+*.tmp
+test/
+files/
+
+# Scripts de desarrollo local
+test_*.py
+check_*.py
+fix_*.py
+verificar_*.py
+actualizar_*.py
+marcar_*.py
+
+# Documentación de desarrollo (opcional - comenta si quieres subirla)
+no_subir/
+

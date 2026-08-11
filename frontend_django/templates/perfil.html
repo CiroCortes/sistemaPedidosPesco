@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+
+{% block title %}Mi Perfil - Sistema PESCO{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h2 mb-4">
+        <i class="bi bi-person-circle me-2"></i>
+        Mi Perfil
+    </h1>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-person-circle" style="font-size: 5rem; color: var(--pesco-primary);"></i>
+                    </div>
+                    <h4>{{ user.nombre_completo }}</h4>
+                    <p class="text-muted">@{{ user.username }}</p>
+                    <span class="badge bg-primary">{{ user.get_rol_display }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Información Personal</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless">
+                        <tr>
+                            <td><strong>Nombre Completo:</strong></td>
+                            <td>{{ user.nombre_completo }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Usuario:</strong></td>
+                            <td>{{ user.username }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Email:</strong></td>
+                            <td>{{ user.email|default:"No registrado" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Teléfono:</strong></td>
+                            <td>{{ user.telefono|default:"No registrado" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Rol:</strong></td>
+                            <td><span class="badge bg-primary">{{ user.get_rol_display }}</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Fecha de registro:</strong></td>
+                            <td>{{ user.date_joined|date:"d/m/Y H:i" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Último acceso:</strong></td>
+                            <td>{{ user.last_login|date:"d/m/Y H:i"|default:"Nunca" }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if user.es_admin %}
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Administrar Rol</h5>
+                    <span class="badge bg-primary">Solo admin</span>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Como administrador puedes modificar tu rol operativo para probar la aplicación.
+                    </p>
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="selectRol" class="form-label">Selecciona un rol</label>
+                            <select class="form-select" id="selectRol" name="rol" required>
+                                {% for value, label in roles %}
+                                    <option value="{{ value }}" {% if user.rol == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-2"></i>
+                            Guardar Cambios
+                        </button>
+                        <p class="mt-2 text-muted small">
+                            Nota: siempre conservarás permisos de administrador (superusuario) aunque cambies el rol operativo.
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+

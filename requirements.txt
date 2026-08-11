@@ -1,4 +1,39 @@
-Django==5.1.4
-gunicorn==23.0.0
-whitenoise==6.8.2
-# psycopg2-binary: agregar cuando se conecte la RDS real (este placeholder usa SQLite)
+# Core Django
+Django==5.2.6
+python-dotenv==1.1.1
+
+# Base de datos PostgreSQL (RDS)
+psycopg2-binary==2.9.10
+dj-database-url==3.0.1
+
+# Seguridad - Argon2 para hashing de contraseñas
+argon2-cffi==25.1.0
+
+# API REST
+djangorestframework==3.14.0
+django-cors-headers==4.6.0
+
+# Rate Limiting (seguridad)
+django-ratelimit==4.1.0
+
+# Excel (para reportes y carga de stock)
+pandas==2.3.3
+openpyxl==3.1.5
+xlrd==2.0.2
+xlsxwriter==3.2.9
+
+# PDF y Etiquetas
+reportlab==4.4.5
+python-barcode==0.16.1
+Pillow==12.0.0
+
+# Deployment
+gunicorn==21.2.0
+whitenoise==6.11.0
+
+# IA - AWS Bedrock (Claude) y S3 (reemplaza a Supabase Storage)
+boto3==1.35.99
+
+# Utilidades
+pytz==2025.2
+

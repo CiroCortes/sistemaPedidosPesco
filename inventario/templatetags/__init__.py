@@ -1,0 +1,2 @@
+# Templatetags para inventario
+

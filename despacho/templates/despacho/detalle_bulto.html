@@ -1,0 +1,490 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ bulto.codigo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h3 mb-0">Bulto {{ bulto.codigo }}</h1>
+        <p class="text-muted mb-0">
+            Estado actual:
+            <span class="badge bg-{{ bulto.color_estado }}">{{ bulto.get_estado_display }}</span>
+            {% if numero_bulto and total_bultos %}
+                <span class="ms-2">Bulto {{ numero_bulto }}-{{ total_bultos }}</span>
+            {% endif %}
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary" id="btnImprimirEtiqueta">
+            <i class="bi bi-printer me-1"></i> Imprimir Etiqueta
+        </button>
+        <a href="{% url 'despacho:gestion' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Volver
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-{% if user.es_admin %}6{% else %}12{% endif %}">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light"><strong>Información del bulto</strong></div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Tipo</dt>
+                    <dd class="col-sm-8">{{ bulto.get_tipo_display }}</dd>
+                    <dt class="col-sm-4">Transportista</dt>
+                    <dd class="col-sm-8">
+                        {{ bulto.get_transportista_display }}
+                        {% if bulto.transportista == 'OTRO' and bulto.transportista_extra %}
+                        <br><small class="text-muted">{{ bulto.transportista_extra }}</small>
+                        {% endif %}
+                    </dd>
+                    <dt class="col-sm-4">Guía</dt>
+                    <dd class="col-sm-8">{{ bulto.numero_guia_transportista|default:"-" }}</dd>
+                    <dt class="col-sm-4">Peso</dt>
+                    <dd class="col-sm-8">{{ bulto.peso_total }} kg</dd>
+                    <dt class="col-sm-4">Medidas</dt>
+                    <dd class="col-sm-8">{{ bulto.largo_cm }} x {{ bulto.ancho_cm }} x {{ bulto.alto_cm }} cm</dd>
+                    <dt class="col-sm-4">Fecha embalaje</dt>
+                    <dd class="col-sm-8">
+                        {% if bulto.fecha_embalaje %}
+                            {{ bulto.fecha_embalaje|date:"d/m/Y H:i" }}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </dd>
+                    <dt class="col-sm-4">Creado por</dt>
+                    <dd class="col-sm-8">{{ bulto.creado_por|default:"-" }}</dd>
+                    <dt class="col-sm-4">Observaciones</dt>
+                    <dd class="col-sm-8">{{ bulto.observaciones|default:"Sin notas" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    {% if user.es_admin %}
+    <div class="col-lg-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light"><strong>Actualizar estado</strong></div>
+            <div class="card-body">
+                <div id="estadoErrors" class="alert alert-danger d-none"></div>
+                <form id="formEstado" method="post" action="{% url 'despacho:actualizar_estado_bulto' bulto.id %}">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="id_estado" class="form-label">Estado:</label>
+                        <select name="estado" class="form-select" id="id_estado" required>
+                            {% for value, label in estado_form.estado.field.choices %}
+                            <option value="{{ value }}" {% if bulto.estado == value %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% if estado_form.estado.errors %}
+                            <div class="text-danger small mt-1">{{ estado_form.estado.errors|striptags }}</div>
+                        {% endif %}
+                        <small class="form-text text-muted">Selecciona el nuevo estado para este bulto</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="id_numero_guia_transportista" class="form-label">{{ estado_form.numero_guia_transportista.label }}:</label>
+                        {{ estado_form.numero_guia_transportista }}
+                        {% if estado_form.numero_guia_transportista.errors %}
+                            <div class="text-danger small mt-1">{{ estado_form.numero_guia_transportista.errors|striptags }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="id_fecha_embalaje" class="form-label">{{ estado_form.fecha_embalaje.label }}:</label>
+                        {{ estado_form.fecha_embalaje }}
+                        {% if estado_form.fecha_embalaje.help_text %}
+                            <small class="form-text text-muted d-block">{{ estado_form.fecha_embalaje.help_text }}</small>
+                        {% endif %}
+                        {% if estado_form.fecha_embalaje.errors %}
+                            <div class="text-danger small mt-1">{{ estado_form.fecha_embalaje.errors|striptags }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{% url 'despacho:gestion' %}" class="btn btn-outline-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary" id="btnEstado">
+                            <span class="spinner-border spinner-border-sm me-2 d-none" id="spinnerEstado"></span>
+                            Guardar cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-light">
+        <strong>Productos incluidos</strong>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Solicitud</th>
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>Cantidad</th>
+                    <th>Estado solicitud</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for detalle in detalles %}
+                <tr>
+                    <td>
+                        <a href="{% url 'solicitudes:detalle' detalle.solicitud.id %}" target="_blank">#{{ detalle.solicitud.id }}</a><br>
+                        <small class="text-muted d-block">{{ detalle.solicitud.cliente }}</small>
+                        <small class="text-muted">OT: {{ detalle.solicitud.numero_ot|default:"-" }}</small>
+                    </td>
+                    <td><code>{{ detalle.codigo }}</code></td>
+                    <td>{{ detalle.descripcion|default:"-" }}</td>
+                    <td>{{ detalle.cantidad }}</td>
+                    <td><span class="badge bg-secondary">{{ detalle.solicitud.get_estado_display }}</span></td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-4">No hay productos asociados.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const formEstado = document.getElementById('formEstado');
+    const spinnerEstado = document.getElementById('spinnerEstado');
+    const btnEstado = document.getElementById('btnEstado');
+    const estadoErrors = document.getElementById('estadoErrors');
+
+    if (formEstado) {
+    formEstado.addEventListener('submit', function (event) {
+        event.preventDefault();
+        spinnerEstado.classList.remove('d-none');
+        btnEstado.disabled = true;
+        estadoErrors.classList.add('d-none');
+        estadoErrors.innerHTML = '';
+
+        fetch(formEstado.action, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new FormData(formEstado)
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    const errors = data.errors ? Object.values(data.errors).flat().join('<br>') : data.message;
+                    estadoErrors.innerHTML = errors || 'Ocurrió un error.';
+                    estadoErrors.classList.remove('d-none');
+                }
+            })
+            .catch(() => {
+                estadoErrors.innerHTML = 'Error inesperado.';
+                estadoErrors.classList.remove('d-none');
+            })
+            .finally(() => {
+                spinnerEstado.classList.add('d-none');
+                btnEstado.disabled = false;
+            });
+    });
+    }
+
+    // Función para generar e imprimir etiqueta de bulto
+    function generarEtiquetaBulto() {
+        try {
+            const bultoCodigo = '{{ bulto.codigo|escapejs }}';
+            const numeroBulto = {{ numero_bulto|default:"null" }};
+            const totalBultos = {{ total_bultos|default:"null" }};
+            const peso = parseFloat('{{ bulto.peso_total|default:"0" }}') || 0;
+            const largo = parseFloat('{{ bulto.largo_cm|default:"0" }}') || 0;
+            const ancho = parseFloat('{{ bulto.ancho_cm|default:"0" }}') || 0;
+            const alto = parseFloat('{{ bulto.alto_cm|default:"0" }}') || 0;
+            const medidas = `${largo} x ${ancho} x ${alto} cm`;
+            const tipo = '{{ bulto.get_tipo_display|escapejs }}';
+            const transportista = '{{ bulto.get_transportista_display|escapejs }}';
+            
+            // Obtener array de solicitudes
+            const solicitudes = JSON.parse('{{ solicitudes_etiqueta_json|escapejs }}' || '[]');
+            
+            // Formatear número de bulto
+            const numeroFormato = numeroBulto && totalBultos ? `Bulto ${numeroBulto} de ${totalBultos}` : 'Bulto Único';
+            
+            // Fecha actual
+            const now = new Date();
+            const fecha = now.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            
+            // Generar HTML de solicitudes
+            let solicitudesHTML = '';
+            if (solicitudes.length > 0) {
+                solicitudesHTML = `
+                    <div class="solicitud-info" style="border: none; background: transparent; padding: 0;">
+                        <div class="label" style="text-align: left; margin-bottom: 4px; font-weight: bold; color: #000; font-size: 11pt;">Solicitudes Asociadas:</div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11pt; text-align: left;">
+                            <tr style="border-bottom: 2px solid #000; font-size: 9pt;">
+                                <th style="padding: 2px;">Tipo</th>
+                                <th style="padding: 2px;">Número</th>
+                                <th style="padding: 2px;">Destino</th>
+                            </tr>
+                            ${solicitudes.map(s => `
+                                <tr style="border-bottom: 1px solid #ccc;">
+                                    <td style="padding: 6px 2px; font-weight: bold;">${s.tipo}</td>
+                                    <td style="padding: 6px 2px; font-weight: bold;">${s.numero}</td>
+                                    <td style="padding: 6px 2px;">${s.cliente}</td>
+                                </tr>
+                            `).join('')}
+                        </table>
+                    </div>
+                `;
+            } else {
+                solicitudesHTML = `
+                    <div class="solicitud-info" style="border: none; background: transparent; padding: 0;">
+                        <div class="label" style="text-align: left; margin-bottom: 4px; font-weight: bold; color: #000; font-size: 11pt;">Solicitudes Asociadas:</div>
+                        <div style="font-size: 11pt; padding: 6px 0;">Sin solicitudes asociadas</div>
+                    </div>
+                `;
+            }
+
+            // Generar HTML de la etiqueta (10cm x 14cm = 100mm x 140mm)
+            const htmlEtiqueta = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Etiqueta Bulto - ${bultoCodigo}</title>
+    <style>
+        @media print {
+            @page {
+                size: 100mm 140mm portrait;
+                margin: 0;
+            }
+            .no-print { display: none !important; }
+            html, body {
+                width: 100mm;
+                height: 140mm;
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+            }
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            width: 100mm;
+            height: 140mm;
+            padding: 4mm;
+            border: 1px solid #000;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+            -webkit-print-color-adjust: exact;
+        }
+        
+        .header {
+            border-bottom: 3px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 20pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+        }
+        
+        .header .codigo-bulto {
+            font-size: 26pt;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            color: #000;
+            letter-spacing: 1px;
+        }
+        
+        .numero-bulto {
+            font-size: 18pt;
+            font-weight: bold;
+            text-align: center;
+            margin: 5px 0 15px 0;
+            padding: 4px 0;
+            border-bottom: 2px solid #000;
+        }
+        
+        .info-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .info-row {
+            margin: 8px 0;
+            font-size: 12pt;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            display: inline-block;
+            min-width: 60px;
+        }
+        
+        .info-value {
+            font-size: 12pt;
+        }
+        
+        .solicitud-info {
+            background-color: #f9f9f9;
+            padding: 8px;
+            border: 1px solid #666;
+            margin: 8px 0;
+            min-height: 50px;
+        }
+        
+        .solicitud-info .label {
+            font-size: 9pt;
+            color: #666;
+        }
+        
+        .solicitud-info .value {
+            font-size: 16pt;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .medidas-section {
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+            padding: 8px 0;
+            margin: 10px 0;
+            text-align: center;
+        }
+        
+        .medidas-section .medidas {
+            font-size: 14pt;
+            font-weight: bold;
+        }
+        
+        .footer {
+            border-top: 2px solid #000;
+            padding-top: 8px;
+            margin-top: auto;
+            text-align: center;
+            font-size: 9pt;
+        }
+        
+        .barcode-area {
+            text-align: center;
+            margin: 10px 0;
+            padding: 5px;
+            border: 1px dashed #999;
+            min-height: 40px;
+        }
+        
+        .no-print {
+            text-align: center;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        .no-print button {
+            padding: 10px 20px;
+            font-size: 14pt;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <h2>Etiqueta de Bulto - Vista Previa</h2>
+        <p>Tamaño: 10cm x 14cm</p>
+        <button onclick="window.print()">🖨️ Imprimir</button>
+        <button onclick="window.close()">Cerrar</button>
+    </div>
+    
+    <div class="header">
+        <h1>PESCO</h1>
+        <div class="codigo-bulto">${bultoCodigo}</div>
+    </div>
+    
+    <div class="numero-bulto">
+        ${numeroFormato}
+    </div>
+    
+    ${solicitudesHTML}
+    
+    <div class="info-section">
+        <div>
+            
+            <div class="medidas-section">
+                <div style="font-size: 10pt; color: #666; margin-bottom: 3px;">Medidas</div>
+                <div class="medidas">${medidas}</div>
+            </div>
+            
+            <div class="info-row">
+                <span class="info-label">Peso:</span>
+                <span class="info-value">${peso} kg</span>
+            </div>
+            
+            <div class="info-row">
+                <span class="info-label">Transporte:</span>
+                <span class="info-value">${transportista}</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <div style="font-weight: bold; margin-bottom: 3px;">${fecha}</div>
+        <div style="font-size: 8pt; color: #666;">Sistema PESCO - Gestión de Despacho</div>
+    </div>
+</body>
+</html>
+            `;
+            
+            // Abrir ventana de impresión
+            const ventanaImpresion = window.open('', '_blank', 'width=400,height=560');
+            ventanaImpresion.document.write(htmlEtiqueta);
+            ventanaImpresion.document.close();
+            
+            // Esperar a que cargue y luego mostrar opción de imprimir
+            ventanaImpresion.onload = function() {
+                setTimeout(() => {
+                    ventanaImpresion.focus();
+                }, 500);
+            };
+        } catch (error) {
+            console.error('Error al generar etiqueta:', error);
+            alert('Error al generar la etiqueta. Por favor, contacta al administrador.');
+        }
+    }
+    
+    // Listener para el botón de imprimir etiqueta
+    const btnImprimirEtiqueta = document.getElementById('btnImprimirEtiqueta');
+    if (btnImprimirEtiqueta) {
+        btnImprimirEtiqueta.addEventListener('click', generarEtiquetaBulto);
+    }
+</script>
+{% endblock %}
+

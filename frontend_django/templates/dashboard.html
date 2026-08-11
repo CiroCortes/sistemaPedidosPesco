@@ -1,0 +1,1467 @@
+{% extends 'base.html' %}
+{% load static formato_filters %}
+
+{% block title %}Dashboard - Sistema PESCO{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-speedometer2 me-2"></i>
+        Dashboard
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-calendar3"></i> {{ hoy|date:"d/m/Y" }}
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Mensaje de bienvenida -->
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <i class="bi bi-info-circle me-2"></i>
+    <strong>Bienvenido, {{ user.nombre_completo }}!</strong> 
+    Tu rol es: <span class="badge bg-primary">{{ user.get_rol_display }}</span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+
+<!-- KPIs Cards -->
+<div class="row g-3 mb-4">
+    {% if user.es_admin %}
+        <!-- KPIs Admin — clickeables: abren offcanvas con detalle -->
+        <div class="col-md-3">
+            <div class="card card-kpi border-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Total Solicitudes</h6>
+                            <h2 class="mb-0">{{ total_solicitudes }}</h2>
+                        </div>
+                        <div class="fs-1 text-primary">
+                            <i class="bi bi-files"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card card-kpi border-warning kpi-clickable" data-kpi-estado="pendiente" style="cursor:pointer" title="Ver detalle de pendientes">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Pendientes <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
+                            <h2 class="mb-0 text-warning">{{ solicitudes_pendientes }}</h2>
+                        </div>
+                        <div class="fs-1 text-warning">
+                            <i class="bi bi-clock-history"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card card-kpi border-info kpi-clickable" data-kpi-estado="en_despacho" style="cursor:pointer" title="Ver detalle en despacho">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">En Despacho <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
+                            <h2 class="mb-0 text-info">{{ solicitudes_en_despacho }}</h2>
+                        </div>
+                        <div class="fs-1 text-info">
+                            <i class="bi bi-truck"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card card-kpi border-secondary kpi-clickable" data-kpi-estado="listo_despacho" style="cursor:pointer" title="Ver detalle listo para despacho">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Listo para despacho <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
+                            <h2 class="mb-0 text-secondary">{{ solicitudes_listo_despacho }}</h2>
+                        </div>
+                        <div class="fs-1 text-secondary">
+                            <i class="bi bi-box-seam"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card card-kpi border-success kpi-clickable" data-kpi-estado="despachado" style="cursor:pointer" title="Ver detalle de despachadas">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Despachadas <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
+                            <h2 class="mb-0 text-success">{{ solicitudes_despachadas }}</h2>
+                        </div>
+                        <div class="fs-1 text-success">
+                            <i class="bi bi-check-circle"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card card-kpi border-danger kpi-clickable" data-kpi-estado="urgente" style="cursor:pointer" title="Ver detalle de urgentes">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Urgentes (pendientes) <i class="bi bi-box-arrow-right ms-1 small"></i></h6>
+                            <h2 class="mb-0 text-danger">{{ solicitudes_urgentes }}</h2>
+                        </div>
+                        <div class="fs-1 text-danger">
+                            <i class="bi bi-exclamation-triangle"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    {% elif user.es_bodega %}
+        <!-- KPIs Bodega -->
+        <div class="col-md-6">
+            <div class="card card-kpi border-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Solicitudes Pendientes</h6>
+                            <h2 class="mb-0 text-warning">{{ solicitudes_pendientes }}</h2>
+                            <small class="text-muted">Esperando transferencia</small>
+                        </div>
+                        <div class="fs-1 text-warning">
+                            <i class="bi bi-clipboard-check"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card card-kpi border-danger">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Urgentes</h6>
+                            <h2 class="mb-0 text-danger">{{ solicitudes_urgentes }}</h2>
+                            <small class="text-muted">Requieren atención inmediata</small>
+                        </div>
+                        <div class="fs-1 text-danger">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    {% elif user.es_despacho %}
+        <!-- KPIs Despacho -->
+        <div class="col-md-6">
+            <div class="card card-kpi border-info">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">En Despacho</h6>
+                            <h2 class="mb-0 text-info">{{ solicitudes_en_despacho }}</h2>
+                            <small class="text-muted">Listos para embalar</small>
+                        </div>
+                        <div class="fs-1 text-info">
+                            <i class="bi bi-box-seam"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card card-kpi border-danger">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-2 text-muted">Urgentes</h6>
+                            <h2 class="mb-0 text-danger">{{ solicitudes_urgentes }}</h2>
+                            <small class="text-muted">Prioridad alta</small>
+                        </div>
+                        <div class="fs-1 text-danger">
+                            <i class="bi bi-lightning-fill"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Indicadores de Productividad (Solo Admin) -->
+{% if user.es_admin and indicadores %}
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-graph-up-arrow me-2"></i>
+                Indicadores de Productividad
+            </h5>
+            <div class="d-flex gap-2">
+                <!-- Filtro de Período -->
+                <select id="filtroPeriodo" class="form-select form-select-sm" style="width: auto;">
+                    <option value="7" {% if periodo_actual == 7 %}selected{% endif %}>Últimos 7 días</option>
+                    <option value="30" {% if periodo_actual == 30 %}selected{% endif %}>Últimos 30 días</option>
+                    <option value="60" {% if periodo_actual == 60 %}selected{% endif %}>Últimos 60 días</option>
+                    <option value="90" {% if periodo_actual == 90 %}selected{% endif %}>Últimos 90 días</option>
+                </select>
+                <!-- Filtro de Transporte -->
+                <select id="filtroTransporte" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">Todos los transportes</option>
+                    {% for transporte in indicadores.transportes_disponibles %}
+                        <option value="{{ transporte }}" {% if transporte_filtro == transporte %}selected{% endif %}>
+                            {{ transporte }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-sm btn-light" onclick="aplicarFiltros()">
+                    <i class="bi bi-funnel"></i> Aplicar
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Tarjetas de Lead Times -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card border-success">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            <i class="bi bi-clock-history me-1"></i>
+                            Lead Time Preparación
+                        </h6>
+                        <h3 class="mb-1 text-success">
+                            {{ indicadores.lead_time_preparacion.promedio_dias|floatformat:1 }} días laborales
+                        </h3>
+                        <small class="text-muted">
+                            ({{ indicadores.lead_time_preparacion.promedio_horas|floatformat:1 }} horas)
+                        </small>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Mín: {{ indicadores.lead_time_preparacion.min_dias|floatformat:1 }} dl | 
+                                Máx: {{ indicadores.lead_time_preparacion.max_dias|floatformat:1 }} dl
+                            </small>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">
+                                {{ indicadores.lead_time_preparacion.total_registros }} registros
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card border-info">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            <i class="bi bi-box-seam me-1"></i>
+                            Lead Time Embalaje
+                        </h6>
+                        <h3 class="mb-1 text-info">
+                            {{ indicadores.lead_time_embalaje.promedio_dias|floatformat:1 }} días laborales
+                        </h3>
+                        <small class="text-muted">
+                            ({{ indicadores.lead_time_embalaje.promedio_horas|floatformat:1 }} horas)
+                        </small>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Mín: {{ indicadores.lead_time_embalaje.min_dias|floatformat:1 }} dl | 
+                                Máx: {{ indicadores.lead_time_embalaje.max_dias|floatformat:1 }} dl
+                            </small>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">
+                                {{ indicadores.lead_time_embalaje.total_registros }} registros
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card border-primary">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            <i class="bi bi-truck me-1"></i>
+                            Lead Time Total
+                        </h6>
+                        <h3 class="mb-1 text-primary">
+                            {{ indicadores.lead_time_total.promedio_dias|floatformat:1 }} días laborales
+                        </h3>
+                        <small class="text-muted">
+                            ({{ indicadores.lead_time_total.promedio_horas|floatformat:1 }} horas)
+                        </small>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Mín: {{ indicadores.lead_time_total.min_dias|floatformat:1 }} dl | 
+                                Máx: {{ indicadores.lead_time_total.max_dias|floatformat:1 }} dl
+                            </small>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">
+                                {{ indicadores.lead_time_total.total_registros }} registros
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gráfico de Lead Times -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-graph-up me-2"></i>
+                            Tendencia Lead Time Preparación - Evolución Semanal (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div style="position:relative; height:300px; width:100%;">
+                            <canvas id="chartLeadTimes"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabla de Lead Time por Bodega -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-clock-history me-2"></i>
+                            Lead Time Promedio de Preparación por Bodega (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if indicadores.lead_time_bodegas %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Bodega</th>
+                                        <th class="text-center">Lead Time Promedio</th>
+                                        <th>En Horas</th>
+                                        <th>En Días Laborales</th>
+                                        <th class="text-center">Operaciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in indicadores.lead_time_bodegas %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ item.bodega_codigo }}</strong><br>
+                                            <small class="text-muted">{{ item.bodega_nombre }}</small>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if item.cantidad_operaciones > 0 %}
+                                                <span class="badge {% if item.lead_time_dias >= 2 %}bg-danger{% elif item.lead_time_dias >= 1 %}bg-warning{% else %}bg-success{% endif %} fs-6">
+                                                    {{ item.lead_time_horas|floatformat:1 }}h
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary fs-6">0h</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{% if item.cantidad_operaciones > 0 %}{{ item.lead_time_horas|floatformat:1 }} horas{% else %}<span class="text-muted">0.0 horas</span>{% endif %}</td>
+                                        <td>{% if item.cantidad_operaciones > 0 %}{{ item.lead_time_dias|floatformat:2 }} días laborales{% else %}<span class="text-muted">0.00 días laborales</span>{% endif %}</td>
+                                        <td class="text-center"><span class="badge {% if item.cantidad_operaciones > 0 %}bg-info{% else %}bg-secondary{% endif %}">{{ item.cantidad_operaciones }}</span></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="p-4 text-center text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay datos de lead time para el período seleccionado.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gráficos de Torta - Estadísticas por Cliente -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-pie-chart me-2"></i>
+                            Solicitudes por sucursal, Camión PESCO, Retira cliente y OTROS (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div style="position:relative; height:320px; width:100%;">
+                            <canvas id="chartOperacionesCliente"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-pie-chart-fill me-2"></i>
+                            Kilos volumétricos por sucursal, Camión PESCO, Retira cliente y OTROS (Últimos {{ periodo_actual }} días)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div style="position:relative; height:320px; width:100%;">
+                            <canvas id="chartKilosCliente"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabla de Solicitudes en Despacho -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-boxes me-2"></i>
+                            Solicitudes en Despacho (Estado: Listo para Despacho)
+                        </h6>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if indicadores.solicitudes_en_despacho %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Transporte</th>
+                                        <th>Cantidad de Solicitudes</th>
+                                        <th>Valor USD</th>
+                                        <th>Horas Laborales</th>
+                                        <th>Días Laborales</th>
+                                        <th>Días Calendario</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in indicadores.solicitudes_en_despacho %}
+                                    <tr>
+                                        <td><strong>{{ item.transporte }}</strong></td>
+                                        <td><span class="badge bg-primary">{{ item.cantidad_solicitudes }}</span></td>
+                                        <td>{{ item.valor_usd|formato_usd }}</td>
+                                        <td>
+                                            <span class="badge {% if item.dias_laborales >= 3 %}bg-danger{% elif item.dias_laborales >= 2 %}bg-warning{% else %}bg-success{% endif %}">
+                                                {{ item.horas_laborales|floatformat:1 }}h
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge {% if item.dias_laborales >= 3 %}bg-danger{% elif item.dias_laborales >= 2 %}bg-warning{% else %}bg-success{% endif %}">
+                                                {{ item.dias_laborales|floatformat:1 }} días
+                                            </span>
+                                        </td>
+                                        <td>{{ item.dias_calendario|floatformat:1 }} días</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="p-4 text-center text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay solicitudes en despacho para el período y transporte seleccionados.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if user.es_admin and indicadores %}
+<script type="application/json" id="tendenciaSemanalData">{% if indicadores.lead_time_preparacion.tendencia_semanal_json %}{{ indicadores.lead_time_preparacion.tendencia_semanal_json|safe }}{% else %}[]{% endif %}</script>
+{% endif %}
+
+<script>
+function aplicarFiltros() {
+    const periodo = document.getElementById('filtroPeriodo').value;
+    const transporte = document.getElementById('filtroTransporte').value;
+    const url = new URL(window.location.href);
+    url.searchParams.set('periodo', periodo);
+    if (transporte) {
+        url.searchParams.set('transporte', transporte);
+    } else {
+        url.searchParams.delete('transporte');
+    }
+    window.location.href = url.toString();
+}
+
+// Gráfico de Lead Times
+{% if user.es_admin and indicadores %}
+document.addEventListener('DOMContentLoaded', function() {
+    // Verificar si Chart.js está disponible
+    if (typeof Chart !== 'undefined') {
+        
+        // 🎨 MAPEO FIJO DE COLORES POR SUCURSAL/CATEGORÍA
+        const colorMap = {
+            'SUC CALAMA': 'rgba(40, 167, 69, 0.8)',          // Verde
+            'SUC ANTOFAGASTA': 'rgba(0, 123, 255, 0.8)',     // Azul
+            'SUC PTO MONTT': 'rgba(220, 53, 69, 0.8)',       // Rojo
+            'SUC LOS ANGELES': 'rgba(255, 193, 7, 0.8)',     // Amarillo
+            'TALLER HMS': 'rgba(111, 66, 193, 0.8)',         // Violeta
+            'TALLER OLEOHTEC': 'rgba(32, 201, 151, 0.8)',    // Verde agua
+            'Camión PESCO': 'rgba(0, 180, 216, 0.8)',        // Turquesa PESCO
+            'Retira cliente': 'rgba(253, 126, 20, 0.85)',    // Naranja (transporte RETIRA_CLIENTE)
+            'OTROS': 'rgba(108, 117, 125, 0.8)',             // Gris oscuro
+            'Sin valor USD (RRHH, internos, etc.)': 'rgba(255, 99, 132, 0.8)',  // Rosa
+            'DEFAULT': 'rgba(153, 102, 255, 0.8)'            // Púrpura - para categorías no mapeadas
+        };
+        
+        // Función para obtener color por nombre de categoría
+        function getColorForCategory(categoryName) {
+            return colorMap[categoryName] || colorMap['DEFAULT'];
+        }
+        
+        // ✨ CONFIGURACIÓN GLOBAL DE ANIMACIONES ✨
+        const animacionConfig = {
+            duration: 1500,  // Duración de la animación en ms
+            easing: 'easeInOutQuart',  // Efecto de animación suave
+            delay: (context) => {
+                let delay = 0;
+                if (context.type === 'data' && context.mode === 'default') {
+                    delay = context.dataIndex * 100;  // Efecto escalonado
+                }
+                return delay;
+            }
+        };
+        
+        const hoverAnimacionConfig = {
+            duration: 200,
+            easing: 'easeInOutQuad'
+        };
+        
+        // ✨ PLUGIN PARA MOSTRAR PORCENTAJES EN LAS TORTAS ✨
+        const porcentajePlugin = {
+            id: 'porcentajeLabels',
+            afterDatasetsDraw: function(chart) {
+                // Solo aplicar a gráficos de tipo 'pie' (tortas)
+                if (chart.config.type !== 'pie') {
+                    return;
+                }
+                
+                const ctx = chart.ctx;
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    const meta = chart.getDatasetMeta(datasetIndex);
+                    if (!meta.hidden) {
+                        meta.data.forEach((element, index) => {
+                            // Solo mostrar si el porcentaje es mayor a 3% (para evitar overlap en segmentos pequeños)
+                            const data = dataset.data[index];
+                            if (data > 3) {
+                                ctx.fillStyle = '#fff';
+                                ctx.font = 'bold 14px Arial';
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                
+                                const position = element.tooltipPosition();
+                                const text = data.toFixed(1) + '%';
+                                
+                                // Dibujar sombra para mejor legibilidad
+                                ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                                ctx.shadowBlur = 3;
+                                ctx.shadowOffsetX = 1;
+                                ctx.shadowOffsetY = 1;
+                                
+                                ctx.fillText(text, position.x, position.y);
+                                
+                                // Resetear sombra
+                                ctx.shadowColor = 'transparent';
+                                ctx.shadowBlur = 0;
+                                ctx.shadowOffsetX = 0;
+                                ctx.shadowOffsetY = 0;
+                            }
+                        });
+                    }
+                });
+            }
+        };
+        
+        // ✨ PLUGIN PARA MOSTRAR VALORES EN BARRAS ✨
+        const valoresBarrasPlugin = {
+            id: 'valoresBarras',
+            afterDatasetsDraw: function(chart) {
+                // Solo aplicar a gráficos de tipo 'bar' (barras)
+                if (chart.config.type !== 'bar') {
+                    return;
+                }
+                
+                const ctx = chart.ctx;
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    const meta = chart.getDatasetMeta(datasetIndex);
+                    if (!meta.hidden) {
+                        meta.data.forEach((bar, index) => {
+                            const data = dataset.data[index];
+                            
+                            ctx.fillStyle = '#2c3e50';
+                            ctx.font = 'bold 14px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                            
+                            // Posicionar el texto encima de la barra
+                            const x = bar.x;
+                            const y = bar.y - 5;
+                            const text = data.toString();
+                            
+                            ctx.fillText(text, x, y);
+                        });
+                    }
+                });
+            }
+        };
+        
+        // Registrar los plugins globalmente
+        if (Chart.registry) {
+            Chart.register(porcentajePlugin);
+            Chart.register(valoresBarrasPlugin);
+        }
+        
+        // Datos para el gráfico de Tendencia Lead Time Preparación
+        const ctxLeadTimes = document.getElementById('chartLeadTimes');
+        if (ctxLeadTimes) {
+            // Preparar datos semanales desde JSON
+            const tendenciaSemanalJson = document.getElementById('tendenciaSemanalData');
+            let tendenciaSemanal = [];
+            
+            if (tendenciaSemanalJson && tendenciaSemanalJson.textContent) {
+                try {
+                    tendenciaSemanal = JSON.parse(tendenciaSemanalJson.textContent);
+                } catch (e) {
+                    console.error('Error al parsear datos de tendencia semanal:', e);
+                    tendenciaSemanal = [];
+                }
+            }
+            
+            // Verificar que hay datos antes de crear el gráfico
+            if (tendenciaSemanal && tendenciaSemanal.length > 0) {
+                // Mostrar solo "S1", "S2", etc. (sin fechas)
+                const labels = tendenciaSemanal.map(item => `S${item.semana_numero}`);
+                // Mantener los valores en horas (sin convertir a días)
+                const promedios = tendenciaSemanal.map(item => parseFloat(item.promedio.toFixed(2)));
+                const minimos = tendenciaSemanal.map(item => parseFloat(item.minimo.toFixed(2)));
+                const maximos = tendenciaSemanal.map(item => parseFloat(item.maximo.toFixed(2)));
+                
+                new Chart(ctxLeadTimes, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Promedio',
+                            data: promedios,
+                            borderColor: 'rgba(40, 167, 69, 1)',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: 'rgba(40, 167, 69, 1)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        },
+                        {
+                            label: 'Máximo',
+                            data: maximos,
+                            borderColor: 'rgba(220, 53, 69, 0.8)',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: 'rgba(220, 53, 69, 0.8)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 1
+                        },
+                        {
+                            label: 'Mínimo',
+                            data: minimos,
+                            borderColor: 'rgba(23, 162, 184, 0.8)',
+                            backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: 'rgba(23, 162, 184, 0.8)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: animacionConfig,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    transitions: {
+                        show: {
+                            animations: {
+                                x: {
+                                    from: 0
+                                },
+                                y: {
+                                    from: 0
+                                }
+                            }
+                        },
+                        hide: {
+                            animations: {
+                                x: {
+                                    to: 0
+                                },
+                                y: {
+                                    to: 0
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Lead Time (horas laborales)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(1) + 'h';
+                                }
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Semana'
+                            },
+                            ticks: {
+                                maxRotation: 0,
+                                minRotation: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    // Mostrar semana y fechas en el tooltip
+                                    const index = context[0].dataIndex;
+                                    const item = tendenciaSemanal[index];
+                                    return `Semana ${item.semana_numero}: ${item.fecha_display.split(': ')[1]}`;
+                                },
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += parseFloat(context.parsed.y).toFixed(2) + ' horas';
+                                    return label;
+                                }
+                            }
+                        }
+                }
+            }
+            });
+            } else {
+                // No hay datos semanales disponibles
+                new Chart(ctxLeadTimes, {
+                    type: 'line',
+                    data: {
+                        labels: ['Sin datos'],
+                        datasets: [{
+                            label: 'Sin datos disponibles',
+                            data: [0],
+                            borderColor: 'rgba(128, 128, 128, 0.5)',
+                            backgroundColor: 'rgba(128, 128, 128, 0.1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Lead Time (horas laborales)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Gráfico de Solicitudes por Cliente
+        // SOLUCIÓN: Usar JSON para evitar problemas de renderizado y duplicados en el template
+        const ctxOperacionesCliente = document.getElementById('chartOperacionesCliente');
+        if (ctxOperacionesCliente) {
+            // Obtener datos desde JSON (más confiable que iterar en template)
+            const datosOperaciones = {% if indicadores.porcentajes_operaciones_cliente_json %}{{ indicadores.porcentajes_operaciones_cliente_json|safe }}{% else %}[]{% endif %};
+            
+            // Extraer arrays desde JSON
+            const clientesOperaciones = datosOperaciones.map(item => item.cliente || '');
+            const porcentajesOperaciones = datosOperaciones.map(item => parseFloat(item.porcentaje) || 0);
+            const operaciones = datosOperaciones.map(item => parseInt(item.operaciones) || 0);
+            
+            // Debug: Verificar cuántas categorías hay
+            console.log('📊 Gráfico Operaciones - Categorías:', clientesOperaciones.length, clientesOperaciones);
+            console.log('📊 Gráfico Operaciones - Porcentajes:', porcentajesOperaciones);
+            console.log('📊 Gráfico Operaciones - Operaciones:', operaciones);
+            
+            // Validar que todos los arrays tengan la misma longitud
+            const minLength = Math.min(clientesOperaciones.length, porcentajesOperaciones.length, operaciones.length);
+            const maxLength = Math.max(clientesOperaciones.length, porcentajesOperaciones.length, operaciones.length);
+            
+            if (minLength !== maxLength) {
+                console.warn(`⚠️ ADVERTENCIA: Arrays con longitudes diferentes. Clientes: ${clientesOperaciones.length}, Porcentajes: ${porcentajesOperaciones.length}, Operaciones: ${operaciones.length}`);
+                console.warn('Usando solo los primeros', minLength, 'elementos');
+            }
+            
+            if (minLength > 0) {
+                // Asegurar que todos los arrays tengan la misma longitud (usar solo los primeros minLength elementos)
+                const clientesFinal = clientesOperaciones.slice(0, minLength);
+                const porcentajesFinal = porcentajesOperaciones.slice(0, minLength);
+                const operacionesFinal = operaciones.slice(0, minLength).map(v => v || 0);
+                
+                // Verificar que los porcentajes sumen 100%
+                const sumaPorcentajes = porcentajesFinal.reduce((a, b) => a + b, 0);
+                if (Math.abs(sumaPorcentajes - 100) > 0.1) {
+                    console.warn(`⚠️ ADVERTENCIA: Los porcentajes suman ${sumaPorcentajes.toFixed(2)}% en lugar de 100%`);
+                }
+                
+                // Asignar colores según el nombre de la categoría (mapeo fijo)
+                const colors = clientesFinal.map(cliente => getColorForCategory(cliente));
+                
+                console.log('📊 Gráfico Operaciones - Clientes:', clientesFinal);
+                console.log('🎨 Colores asignados:', colors);
+                
+                new Chart(ctxOperacionesCliente, {
+                    type: 'pie',
+                    data: {
+                        labels: clientesFinal,
+                        datasets: [{
+                            label: 'Solicitudes',
+                            data: porcentajesFinal,
+                            backgroundColor: colors.slice(0, clientesFinal.length),
+                            borderColor: '#fff',
+                            borderWidth: 2,
+                            hoverOffset: 15,
+                            hoverBorderWidth: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            animateRotate: true,
+                            animateScale: true,
+                            duration: 1500,
+                            easing: 'easeInOutQuart'
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'right',
+                                labels: {
+                                    padding: 15,
+                                    usePointStyle: true,
+                                    font: {
+                                        size: 12
+                                    },
+                                    generateLabels: function(chart) {
+                                        const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                        const labelsOriginal = original.call(this, chart);
+                                        
+                                        // Mantener solo el nombre de la categoría (sin porcentajes)
+                                        labelsOriginal.forEach((label, i) => {
+                                            if (i < clientesFinal.length) {
+                                                label.text = clientesFinal[i];
+                                            }
+                                        });
+                                        
+                                        return labelsOriginal;
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        const index = context.dataIndex;
+                                        if (index >= 0 && index < porcentajesFinal.length) {
+                                            label += porcentajesFinal[index].toFixed(2) + '%';
+                                            if (operacionesFinal && index < operacionesFinal.length) {
+                                                label += ' (' + operacionesFinal[index] + ' solicitudes)';
+                                            } else {
+                                                label += ' (0 solicitudes)';
+                                            }
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Gráfico de Kilos Volumétricos por Cliente
+        // SOLUCIÓN: Usar JSON para evitar problemas de renderizado y duplicados en el template
+        const ctxKilosCliente = document.getElementById('chartKilosCliente');
+        if (ctxKilosCliente) {
+            // Obtener datos desde JSON (más confiable que iterar en template)
+            const datosKilos = {% if indicadores.porcentajes_kilos_cliente_json %}{{ indicadores.porcentajes_kilos_cliente_json|safe }}{% else %}[]{% endif %};
+            
+            // Extraer arrays desde JSON
+            const clientesKilos = datosKilos.map(item => item.cliente || '');
+            const porcentajesKilos = datosKilos.map(item => parseFloat(item.porcentaje) || 0);
+            const valoresKilos = datosKilos.map(item => parseFloat(item.kilos_volumetricos) || 0);
+            
+            // Debug: Verificar cuántas categorías hay
+            console.log('📊 Gráfico Kilos - Categorías:', clientesKilos.length, clientesKilos);
+            console.log('📊 Gráfico Kilos - Porcentajes:', porcentajesKilos);
+            console.log('📊 Gráfico Kilos - Valores:', valoresKilos);
+            
+            // Validar que todos los arrays tengan la misma longitud
+            const minLengthKilos = Math.min(clientesKilos.length, porcentajesKilos.length, valoresKilos.length);
+            const maxLengthKilos = Math.max(clientesKilos.length, porcentajesKilos.length, valoresKilos.length);
+            
+            if (minLengthKilos !== maxLengthKilos) {
+                console.warn(`⚠️ ADVERTENCIA: Arrays con longitudes diferentes. Clientes: ${clientesKilos.length}, Porcentajes: ${porcentajesKilos.length}, Valores: ${valoresKilos.length}`);
+                console.warn('Usando solo los primeros', minLengthKilos, 'elementos');
+            }
+            
+            if (minLengthKilos > 0) {
+                // Asegurar que todos los arrays tengan la misma longitud (usar solo los primeros minLengthKilos elementos)
+                const clientesKilosFinal = clientesKilos.slice(0, minLengthKilos);
+                const porcentajesKilosFinal = porcentajesKilos.slice(0, minLengthKilos);
+                const valoresKilosFinal = valoresKilos.slice(0, minLengthKilos).map(v => parseFloat(v) || 0);
+                
+                // Verificar que los porcentajes sumen 100%
+                const sumaPorcentajesKilos = porcentajesKilosFinal.reduce((a, b) => a + b, 0);
+                if (Math.abs(sumaPorcentajesKilos - 100) > 0.1) {
+                    console.warn(`⚠️ ADVERTENCIA: Los porcentajes de kilos suman ${sumaPorcentajesKilos.toFixed(2)}% en lugar de 100%`);
+                }
+                
+                // Asignar colores según el nombre de la categoría (mapeo fijo)
+                const colorsKilos = clientesKilosFinal.map(cliente => getColorForCategory(cliente));
+                
+                console.log('📊 Gráfico Kilos - Clientes:', clientesKilosFinal);
+                console.log('🎨 Colores asignados:', colorsKilos);
+                
+                new Chart(ctxKilosCliente, {
+                    type: 'pie',
+                    data: {
+                        labels: clientesKilosFinal,
+                        datasets: [{
+                            label: 'Kilos Volumétricos',
+                            data: porcentajesKilosFinal,
+                            backgroundColor: colorsKilos.slice(0, clientesKilosFinal.length),
+                            borderColor: '#fff',
+                            borderWidth: 2,
+                            hoverOffset: 15,
+                            hoverBorderWidth: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            animateRotate: true,
+                            animateScale: true,
+                            duration: 1500,
+                            easing: 'easeInOutQuart'
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'right',
+                                labels: {
+                                    padding: 15,
+                                    usePointStyle: true,
+                                    font: {
+                                        size: 12
+                                    },
+                                    generateLabels: function(chart) {
+                                        const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                        const labelsOriginal = original.call(this, chart);
+                                        
+                                        // Mantener solo el nombre de la categoría (sin porcentajes)
+                                        labelsOriginal.forEach((label, i) => {
+                                            if (i < clientesKilosFinal.length) {
+                                                label.text = clientesKilosFinal[i];
+                                            }
+                                        });
+                                        
+                                        return labelsOriginal;
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        const index = context.dataIndex;
+                                        if (index >= 0 && index < porcentajesKilosFinal.length) {
+                                            label += porcentajesKilosFinal[index].toFixed(2) + '%';
+                                            if (valoresKilosFinal && index < valoresKilosFinal.length && valoresKilosFinal[index] > 0) {
+                                                label += ' (' + valoresKilosFinal[index].toFixed(2) + ' kg)';
+                                            } else {
+                                                label += ' (Sin medidas)';
+                                            }
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    } else {
+        console.warn('Chart.js no está disponible. Los gráficos no se mostrarán.');
+    }
+
+    // ✅ ResizeObserver: fuerza que todos los gráficos de Chart.js se redimensionen
+    // correctamente cuando el contenedor crece después de haber sido achicado.
+    if (typeof ResizeObserver !== 'undefined') {
+        const chartContainers = document.querySelectorAll('canvas[id^="chart"]');
+        chartContainers.forEach(function(canvas) {
+            const parent = canvas.parentElement;
+            if (parent) {
+                new ResizeObserver(function() {
+                    // Buscar la instancia de Chart asociada al canvas
+                    const chartInstance = Chart.getChart(canvas);
+                    if (chartInstance) {
+                        chartInstance.resize();
+                    }
+                }).observe(parent);
+            }
+        });
+    } else {
+        // Fallback para navegadores sin ResizeObserver
+        window.addEventListener('resize', function() {
+            Chart.instances && Object.values(Chart.instances).forEach(function(chart) {
+                chart.resize();
+            });
+        });
+    }
+});
+</script>
+{% endif %}
+{% endif %}
+
+<!-- Tabla de Solicitudes Recientes -->
+{% if listado_solicitudes %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-list-ul me-2"></i>
+            {% if user.es_bodega %}
+                Solicitudes Pendientes
+            {% elif user.es_despacho %}
+                Solicitudes en Despacho
+            {% else %}
+                Solicitudes Recientes
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>N° PC/OF/ST</th>
+                        <th>Códigos</th>
+                        <th>Estado</th>
+                        <th>Urgente</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for solicitud in listado_solicitudes %}
+                    <tr>
+                        <td><strong>#{{ solicitud.id }}</strong></td>
+                        <td>{{ solicitud.fecha_solicitud|date:"d/m/Y" }}</td>
+                        <td>{{ solicitud.cliente }}</td>
+                        <td>
+                            {% if solicitud.tipo == 'ST' and solicitud.numero_st %}
+                                {{ solicitud.numero_st }}
+                            {% elif solicitud.numero_pedido %}
+                                {{ solicitud.numero_pedido }}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ solicitud.total_codigos }}</td>
+                        <td>
+                            <span class="badge bg-{{ solicitud.color_estado }}">
+                                <i class="bi bi-{{ solicitud.icono_estado }} me-1"></i>
+                                {{ solicitud.get_estado_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if solicitud.urgente %}
+                                <span class="badge bg-danger">
+                                    <i class="bi bi-exclamation-triangle"></i> SÍ
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{% url 'solicitudes:detalle' solicitud.id %}" class="btn btn-sm btn-outline-primary" title="Ver detalles">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if user.es_admin %}
+<!-- ============================================================
+     Offcanvas KPI Detalle — panel lateral reutilizable para todas
+     las tarjetas del dashboard. Un solo panel, estado cambia vía
+     fetch al endpoint /api/kpi/<estado>/
+     ============================================================ -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasKpi" aria-labelledby="offcanvasKpiLabel" style="width:700px;max-width:95vw;">
+    <div class="offcanvas-header border-bottom" id="offcanvasKpiHeader">
+        <h5 class="offcanvas-title fw-semibold" id="offcanvasKpiLabel">
+            <i class="bi bi-bar-chart-line me-2"></i>
+            <span id="kpiTitulo">Detalle</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+    </div>
+
+    <!-- Resumen -->
+    <div class="p-3 border-bottom bg-light d-none" id="kpiSummary">
+        <div class="row g-2 text-center">
+            <div class="col-4">
+                <div class="rounded border bg-white p-2">
+                    <div class="fs-4 fw-bold" id="kpiTotal">-</div>
+                    <div class="small text-muted">Total</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="rounded border bg-white p-2">
+                    <div class="fs-4 fw-bold text-primary" id="kpiPromedio">-</div>
+                    <div class="small text-muted">Días promedio</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="rounded border bg-white p-2">
+                    <div class="fs-4 fw-bold text-danger" id="kpiUrgentes">-</div>
+                    <div class="small text-muted">Urgentes</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="offcanvas-body p-0">
+        <!-- Estado: cargando -->
+        <div id="kpiLoading" class="text-center py-5 d-none">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="mt-2 text-muted small">Cargando solicitudes…</div>
+        </div>
+
+        <!-- Estado: error -->
+        <div id="kpiError" class="alert alert-danger mx-3 mt-3 d-none">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <span id="kpiErrorMsg">Error al cargar los datos.</span>
+        </div>
+
+        <!-- Tabla de resultados -->
+        <div id="kpiTablaWrapper" class="d-none">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0 align-middle">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>#</th>
+                            <th>Cliente</th>
+                            <th>Tipo</th>
+                            <th>Fecha</th>
+                            <th class="text-center">Días</th>
+                            <th>Transporte</th>
+                            <th>Bodega</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kpiTablaBody"></tbody>
+                </table>
+            </div>
+            <div class="p-3 border-top d-flex justify-content-between align-items-center">
+                <small class="text-muted" id="kpiNota"></small>
+                <a id="kpiVerTodos" href="{% url 'solicitudes:lista' %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-list-ul me-1"></i>Ver listado completo
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    'use strict';
+
+    const offcanvasEl = document.getElementById('offcanvasKpi');
+    // Estado de la petición en curso (evita race conditions)
+    let _pendingEstado = null;
+
+    const COLOR_CLASS = {
+        primary: 'text-primary', warning: 'text-warning',
+        info: 'text-info', secondary: 'text-secondary',
+        success: 'text-success', danger: 'text-danger',
+    };
+
+    function diasBadge(dias) {
+        const cls = dias >= 5 ? 'bg-danger' : dias >= 3 ? 'bg-warning text-dark' : 'bg-success';
+        return `<span class="badge ${cls}">${dias}d</span>`;
+    }
+
+    // Usar clases en vez de style inline → inmune a problemas de transición del offcanvas
+    function setVisible(id, show) {
+        const el = document.getElementById(id);
+        if (!el) { console.warn('[KPI] setVisible: elemento no encontrado:', id); return; }
+        el.classList.toggle('d-none', !show);
+    }
+
+    function showLoading() {
+        const titulo = document.getElementById('kpiTitulo');
+        const label  = document.getElementById('offcanvasKpiLabel');
+        if (titulo) titulo.textContent = 'Cargando...';
+        if (label)  label.className = 'offcanvas-title fw-semibold text-muted';
+
+        ['kpiTotal', 'kpiPromedio', 'kpiUrgentes'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '-';
+        });
+        const nota = document.getElementById('kpiNota');
+        if (nota) nota.textContent = '';
+
+        const tabla = document.querySelector('#kpiTablaWrapper table');
+        if (tabla) tabla.innerHTML = '';
+
+        setVisible('kpiLoading', true);
+        setVisible('kpiError', false);
+        setVisible('kpiTablaWrapper', false);
+        setVisible('kpiSummary', false);
+    }
+
+    function showError(msg) {
+        setVisible('kpiLoading', false);
+        const errEl = document.getElementById('kpiErrorMsg');
+        if (errEl) errEl.textContent = msg;
+        setVisible('kpiError', true);
+    }
+
+    // ---- Helpers ----
+
+    function buildThead(cols) {
+        return '<thead class="table-light sticky-top"><tr>' +
+            cols.map(c => `<th${c.center ? ' class="text-center"' : ''}>${c.label}</th>`).join('') +
+            '</tr></thead>';
+    }
+
+    // Detalle de bodega: solo se muestra en pendiente (es informativo); en los demás estados
+    // la bodega de origen ya no importa (el producto está en 013 o en tránsito).
+    const DETALLE_COLS_PENDIENTE = 7;   // toggle + # + cliente + tipo + fecha + días + transporte
+    const DETALLE_COLS_OTROS     = 7;   // igual cantidad de columnas con bodega visible en detalles
+
+    function detalleRows(s, estado) {
+        return (s.detalles || []).map((d, idx) => {
+            const esPendiente = estado === 'pendiente' || estado === 'urgente';
+            const estadoCls = d.estado_bodega === 'pendiente' ? 'bg-warning text-dark'
+                : d.estado_bodega === 'preparado' ? 'bg-success' : 'bg-secondary';
+            const bodegaCell = esPendiente
+                ? `<td><span class="badge bg-light text-dark border"><i class="bi bi-building me-1"></i>${d.bodega}</span></td>`
+                : `<td><span class="badge bg-light text-dark border">${d.bodega !== '-' ? d.bodega : '013'}</span></td>`;
+            return `<tr class="kpi-det-row table-light small text-muted" data-group="det-${s.id}" style="display:none">
+                <td></td>
+                <td>${idx === 0 ? '<i class="bi bi-diagram-3"></i>' : ''}</td>
+                <td colspan="2"><code class="text-primary">${d.codigo}</code> <span>${d.descripcion}</span></td>
+                ${bodegaCell}
+                <td class="text-center"><span class="badge ${estadoCls}">${d.cantidad}</span></td>
+                <td><span class="badge ${estadoCls} text-nowrap">${d.estado_bodega}</span></td>
+            </tr>`;
+        });
+    }
+
+    // Renderer unificado con toggles para todos los estados
+    function renderSolicitudes(solicitudes, estado) {
+        const cols = [
+            {label: ''}, {label: '#'}, {label: 'Cliente'}, {label: 'Tipo'},
+            {label: 'Fecha'}, {label: 'Días', center: true}, {label: 'Transporte'}
+        ];
+        const thead = buildThead(cols);
+
+        const rows = solicitudes.flatMap(s => {
+            const urgenteBadge = s.urgente ? ' <span class="badge bg-danger ms-1">Urgente</span>' : '';
+            const rowClass = s.urgente ? 'table-warning' : '';
+            const nDet = (s.detalles || []).length;
+            const toggle = nDet
+                ? `<button class="btn btn-sm btn-link p-0 text-secondary kpi-toggle"
+                           data-target="det-${s.id}" title="${nDet} línea(s)">
+                       <i class="bi bi-chevron-right"></i>
+                   </button>`
+                : '<span class="text-muted">—</span>';
+
+            const solRow = `<tr class="${rowClass}">
+                <td class="text-center">${toggle}</td>
+                <td><a href="/solicitudes/${s.id}/" class="fw-bold text-decoration-none">#${s.id}</a>${urgenteBadge}</td>
+                <td class="text-truncate" style="max-width:120px" title="${s.cliente}">${s.cliente}</td>
+                <td><span class="badge bg-light text-dark border">${s.tipo}</span></td>
+                <td class="text-nowrap">${s.fecha_solicitud}</td>
+                <td class="text-center">${diasBadge(s.dias_en_sistema)}</td>
+                <td>${s.transporte}</td>
+            </tr>`;
+
+            return [solRow, ...detalleRows(s, estado)];
+        });
+
+        return {thead, rows, colspan: 7};
+    }
+
+    function bindToggles() {
+        document.querySelectorAll('.kpi-toggle').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const group = this.dataset.target;
+                const icon = this.querySelector('i');
+                const opening = icon.classList.contains('bi-chevron-right');
+                document.querySelectorAll(`[data-group="${group}"]`).forEach(row => {
+                    row.style.display = opening ? '' : 'none';
+                });
+                icon.classList.toggle('bi-chevron-right', !opening);
+                icon.classList.toggle('bi-chevron-down', opening);
+            });
+        });
+    }
+
+    function renderData(data) {
+        // Encabezado + color
+        document.getElementById('offcanvasKpiLabel').className =
+            'offcanvas-title fw-semibold ' + (COLOR_CLASS[data.color] || '');
+        document.getElementById('kpiTitulo').textContent = data.label;
+
+        // Resumen
+        document.getElementById('kpiTotal').textContent = data.total;
+        document.getElementById('kpiPromedio').textContent = data.promedio_dias + 'd';
+        document.getElementById('kpiUrgentes').textContent = data.urgentes_count;
+        setVisible('kpiSummary', true);
+
+        // Renderizar tabla (mismo renderer para todos los estados)
+        const {thead, rows, colspan} = renderSolicitudes(data.solicitudes, data.estado);
+        const tabla = document.querySelector('#kpiTablaWrapper table');
+        tabla.innerHTML = thead +
+            '<tbody>' + (rows.length
+                ? rows.join('')
+                : `<tr><td colspan="${colspan}" class="text-center py-4 text-muted">Sin solicitudes en este estado.</td></tr>`
+            ) + '</tbody>';
+
+        document.getElementById('kpiNota').textContent = data.hay_mas
+            ? 'Mostrando los 200 primeros resultados.' : '';
+
+        setVisible('kpiLoading', false);
+        setVisible('kpiTablaWrapper', true);
+
+        bindToggles();
+    }
+
+    function cargarKpi(estado) {
+        showLoading();
+        fetch(`/api/kpi/${estado}/`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json().then(data => r.ok ? data : Promise.reject(data.error || 'Error del servidor')))
+        .then(data => { if (_pendingEstado === estado) renderData(data); })
+        .catch(err => { if (_pendingEstado === estado) showError(typeof err === 'string' ? err : 'No se pudo cargar el detalle.'); });
+    }
+
+    // Si el offcanvas ya está abierto, mostrar directamente.
+    // Si está en transición/cerrado, esperar al evento 'shown' para lanzar el fetch
+    // (evita que showLoading toque el DOM mientras Bootstrap anima la apertura).
+    document.querySelectorAll('.kpi-clickable').forEach(card => {
+        card.addEventListener('click', function () {
+            const estado = this.dataset.kpiEstado;
+            if (!estado) return;
+            _pendingEstado = estado;
+
+            const inst = bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl);
+            const isShown = offcanvasEl.classList.contains('show');
+
+            if (isShown) {
+                // Ya visible: limpiar y cargar directamente
+                cargarKpi(estado);
+            } else {
+                // Esperamos a que Bootstrap termine de abrir antes de lanzar el fetch
+                offcanvasEl.addEventListener('shown.bs.offcanvas', function handler() {
+                    offcanvasEl.removeEventListener('shown.bs.offcanvas', handler);
+                    cargarKpi(estado);
+                });
+                showLoading();
+                inst.show();
+            }
+        });
+    });
+});
+</script>
+{% endif %}
+
+{% endblock %}
+

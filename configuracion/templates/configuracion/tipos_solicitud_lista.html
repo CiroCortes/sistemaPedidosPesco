@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+
+{% block title %}Tipos de Solicitud configurables{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h3 mb-0">Tipos de Solicitud</h1>
+        <p class="text-muted mb-0">Administra los tipos de solicitud disponibles en formularios y filtros.</p>
+    </div>
+    <div>
+        <a href="{% url 'configuracion:lista_transportes' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-truck-flatbed"></i> Transportes
+        </a>
+        <a href="{% url 'configuracion:lista_estados' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-layers"></i> Estados
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <strong>Nuevo tipo de solicitud</strong>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{% url 'configuracion:crear_tipo_solicitud' %}">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-2">{{ form.codigo.label_tag }}{{ form.codigo }}</div>
+                <div class="col-md-4">{{ form.nombre.label_tag }}{{ form.nombre }}</div>
+                <div class="col-md-2">{{ form.orden.label_tag }}{{ form.orden }}</div>
+                <div class="col-md-2">{{ form.icono.label_tag }}{{ form.icono }}</div>
+                <div class="col-md-2">{{ form.color.label_tag }}{{ form.color }}</div>
+            </div>
+            <div class="row g-3 mt-2">
+                <div class="col-md-12">
+                    {{ form.descripcion.label_tag }}{{ form.descripcion }}
+                </div>
+            </div>
+            <div class="row g-3 mt-2">
+                <div class="col-md-12">
+                    <div class="form-check">
+                        {{ form.activo }}
+                        <label class="form-check-label">Activo</label>
+                    </div>
+                </div>
+            </div>
+            {% if form.errors %}
+            <div class="alert alert-danger mt-3">
+                {{ form.errors }}
+            </div>
+            {% endif %}
+            <div class="mt-3 text-end">
+                <button class="btn btn-primary">
+                    <i class="bi bi-plus-circle me-1"></i>Guardar tipo
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-light">
+        <strong>Tipos de solicitud registrados</strong>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th>Descripción</th>
+                    <th>Orden</th>
+                    <th>Icono</th>
+                    <th>Color</th>
+                    <th>Activo</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tipo in tipos %}
+                <tr>
+                    <td><code>{{ tipo.codigo }}</code></td>
+                    <td><strong>{{ tipo.nombre }}</strong></td>
+                    <td>{{ tipo.descripcion|truncatewords:10|default:"-" }}</td>
+                    <td>{{ tipo.orden }}</td>
+                    <td>
+                        {% if tipo.icono %}
+                        <i class="bi bi-{{ tipo.icono }}"></i> {{ tipo.icono }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if tipo.color %}
+                        <span class="badge bg-{{ tipo.color }}">{{ tipo.color }}</span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if tipo.activo %}
+                        <span class="badge bg-success">Activo</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inactivo</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{% url 'configuracion:editar_tipo_solicitud' tipo.id %}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil-square"></i>
+                        </a>
+                        <a href="{% url 'configuracion:toggle_tipo_solicitud' tipo.id %}" class="btn btn-sm btn-outline-secondary">
+                            {% if tipo.activo %}<i class="bi bi-eye-slash"></i>{% else %}<i class="bi bi-eye"></i>{% endif %}
+                        </a>
+                        <form method="post" action="{% url 'configuracion:eliminar_tipo_solicitud' tipo.id %}" class="d-inline" onsubmit="return confirm('¿Estás seguro de eliminar el tipo {{ tipo.codigo }}?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">No hay tipos de solicitud registrados.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+

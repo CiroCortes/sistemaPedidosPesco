@@ -1,0 +1,844 @@
+{% extends 'base.html' %}
+
+{% block extra_css %}
+<style>
+.modal-wide .modal-dialog {
+    max-width: 70vw;
+}
+</style>
+{% endblock %}
+
+{% block title %}Gestión de pedidos{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <div>
+        <h1 class="h2 mb-0">Gestión de pedidos</h1>
+        <p class="text-muted mb-0">Revisa y entrega las solicitudes asignadas a tu bodega.</p>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form class="row g-3 align-items-end">
+            {% if solicitud_filtro %}
+            <input type="hidden" name="solicitud" value="{{ solicitud_filtro }}">
+            {% endif %}
+            <div class="col-md-5">
+                <label class="form-label">Buscar</label>
+                <input type="text" name="q" class="form-control" value="{{ busqueda }}"
+                    placeholder="Cliente, N° pedido o código">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Bodega</label>
+                <select name="bodega" class="form-select">
+                    <option value="">Todas</option>
+                    {% for bodega in bodegas_disponibles %}
+                    <option value="{{ bodega.codigo }}" {% if bodega_filtro == bodega.codigo %}selected{% endif %}>
+                        {{ bodega.codigo }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-outline-primary me-2">
+                    <i class="bi bi-funnel me-1"></i> Filtrar
+                </button>
+                <a href="{% url 'bodega:gestion_pedidos' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i> Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>ID</th>
+                <th>Fecha / Hora</th>
+                <th>Tipo</th>
+                <th>Pedido / ST</th>
+                <th>Cliente</th>
+                <th>Productos</th>
+                <th>Bodegas</th>
+                <th class="text-end">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for solicitud in solicitudes %}
+            <tr>
+                <td class="fw-semibold">#{{ solicitud.id }}</td>
+                <td>
+                    <div>{{ solicitud.fecha_solicitud|date:"d/m/Y" }}</div>
+                    <small class="text-muted">{{ solicitud.hora_solicitud|time:"H:i" }}</small>
+                </td>
+                <td>
+                    <span class="badge bg-secondary">{{ solicitud.tipo }}</span>
+                    {% if solicitud.urgente %}
+                    <span class="badge bg-danger ms-1">Urgente</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div>Pedido: {{ solicitud.numero_pedido|default:"-" }}</div>
+                    <small class="text-muted">ST: {{ solicitud.numero_st|default:"-" }}</small>
+                    <small class="text-muted d-block">OT: {{ solicitud.numero_ot|default:"-" }}</small>
+                </td>
+                <td>
+                    <div class="fw-semibold">{{ solicitud.cliente }}</div>
+                    <small class="text-muted">{{ solicitud.observacion|default:"Sin observaciones" }}</small>
+                </td>
+                <td>
+                    <div class="fw-semibold">{{ solicitud.total_lineas }} líneas</div>
+                    <small class="text-muted">{{ solicitud.total_cantidad }} unidades</small>
+                </td>
+                <td>
+                    {% for bodega in solicitud.bodegas_involucradas %}
+                    <span class="badge bg-info text-dark mb-1">{{ bodega }}</span>
+                    {% endfor %}
+                </td>
+                <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-primary btn-registrar"
+                        data-solicitud="{{ solicitud.id }}"
+                        data-tipo="{{ solicitud.tipo }}"
+                        data-cliente="{{ solicitud.cliente }}"
+                        data-fecha="{{ solicitud.fecha_solicitud|date:'d/m/Y' }}"
+                        data-hora="{{ solicitud.hora_solicitud|time:'H:i' }}"
+                        data-pedido="{{ solicitud.numero_pedido|default:'-' }}"
+                        data-st="{{ solicitud.numero_st|default:'-' }}"
+                        data-ot="{{ solicitud.numero_ot|default:'-' }}"
+                        data-detalles-id="sol-detalles-{{ solicitud.id }}">
+                        <i class="bi bi-truck me-1"></i> Confirmar entrega
+                    </button>
+                    <script type="application/json" id="sol-detalles-{{ solicitud.id }}">
+                        {{ solicitud.modal_detalles_json|safe }}
+                    </script>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-5">
+                    No hay solicitudes pendientes para tus bodegas.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal de transferencia -->
+<div class="modal fade modal-wide" id="modalTransferencia" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Registrar entrega</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <strong>Solicitud:</strong> <span id="transferSolicitud"></span><br>
+                    <strong>Cliente:</strong> <span id="transferCliente"></span><br>
+                    <strong>Pedido:</strong> <span id="transferPedido"></span><br>
+                    <strong>OT:</strong> <span id="transferOt"></span><br>
+                    <strong>Fecha:</strong> <span id="transferFecha"></span>
+                </div>
+                <div class="mb-3">
+                    <h6 class="border-bottom pb-2">Productos asignados</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm" id="tablaTransferDetalles">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <input type="checkbox" id="selectAllDetalles">
+                                    </th>
+                                    <th>Código</th>
+                                    <th>Descripción</th>
+                                    <th>Bodega</th>
+                                    <th>Cantidad</th>
+                                    <th>Ubicaciones</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div id="infoUbicaciones" class="alert alert-info d-none mt-2"></div>
+                </div>
+                <div id="transferErrors" class="alert alert-danger d-none"></div>
+                <form id="formTransferencia" method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">N° transferencia SAP</label>
+                        <input type="text" name="numero_transferencia" class="form-control" required maxlength="50">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha</label>
+                            <input type="date" name="fecha_transferencia" class="form-control" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Hora</label>
+                            <input type="time" name="hora_transferencia" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bodega destino</label>
+                        <input type="text" name="bodega_destino" class="form-control" value="013" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observaciones</label>
+                        <textarea name="observaciones" class="form-control" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" id="btnImprimirPicking">
+                    <i class="bi bi-printer me-1"></i> Imprimir Hoja de Picking
+                </button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="btnCancelarTransferencia">Cancelar</button>
+                <button type="submit" class="btn btn-primary" form="formTransferencia" id="btnSubmitTransferencia">
+                    <span class="spinner-border spinner-border-sm me-2 d-none" id="spinnerTransferencia" role="status"></span>
+                    <span id="btnSubmitText"><i class="bi bi-truck me-1"></i> Confirmar entrega</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const modalEl = document.getElementById('modalTransferencia');
+    const transferenciaModal = new bootstrap.Modal(modalEl);
+    const formTransfer = document.getElementById('formTransferencia');
+    const errorsBox = document.getElementById('transferErrors');
+    const detallesTableBody = document.querySelector('#tablaTransferDetalles tbody');
+    const bulkEndpoint = "{% url 'bodega:registrar_transferencia_multiple' %}";
+    const infoUbicaciones = document.getElementById('infoUbicaciones');
+    let currentDetalles = [];
+
+    function setCurrentDateTime() {
+        const now = new Date();
+        const dateField = formTransfer.querySelector('[name="fecha_transferencia"]');
+        const timeField = formTransfer.querySelector('[name="hora_transferencia"]');
+        dateField.value = now.toISOString().slice(0, 10);
+        timeField.value = now.toTimeString().slice(0, 5);
+    }
+
+    document.querySelectorAll('.btn-registrar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.getElementById('transferSolicitud').textContent = `#${btn.dataset.solicitud} (${btn.dataset.tipo})`;
+            document.getElementById('transferCliente').textContent = btn.dataset.cliente;
+            document.getElementById('transferPedido').textContent = `Pedido: ${btn.dataset.pedido} · ST: ${btn.dataset.st}`;
+            document.getElementById('transferOt').textContent = btn.dataset.ot || '-';
+            document.getElementById('transferFecha').textContent = `${btn.dataset.fecha} ${btn.dataset.hora}`;
+
+            formTransfer.reset();
+            setCurrentDateTime();
+            formTransfer.querySelector('[name="bodega_destino"]').value = '013';
+            errorsBox.classList.add('d-none');
+            errorsBox.innerHTML = '';
+            infoUbicaciones.classList.add('d-none');
+            infoUbicaciones.innerHTML = '';
+
+            const detallesId = btn.dataset.detallesId;
+            const detallesScript = document.getElementById(detallesId);
+            if (!detallesScript) {
+                console.error('No se encontraron los detalles de la solicitud.');
+                return;
+            }
+            const detalles = JSON.parse(detallesScript.textContent);
+            detallesTableBody.innerHTML = '';
+            detalles.forEach((detalle, index) => {
+                const row = document.createElement('tr');
+                
+                // Construir select de bodegas con data-attributes para ubicaciones
+                // Nota: ubicacion_2 es la ubicación física real, ubicacion es la ciudad
+                // Solo mostrar bodegas permitidas y sin stock en el texto
+                const BODEGAS_PERMITIDAS = ['013-03', '013-01', '013-05', '013-08', '013-09', '013-PP', '013-PS'];
+                
+                // Filtrar stock solo por bodegas permitidas y excluir 013
+                const stockPermitido = (detalle.stock || []).filter(item => 
+                    BODEGAS_PERMITIDAS.includes(item.bodega) && item.bodega !== '013'
+                );
+                
+                // Determinar bodega seleccionada inicialmente (solo de las permitidas)
+                let bodegaSeleccionada = null;
+                if (stockPermitido.length > 0) {
+                    // Buscar la bodega sugerida si existe, sino usar la primera
+                    if (detalle.bodega_sugerida) {
+                        bodegaSeleccionada = stockPermitido.find(item => 
+                            item.bodega === detalle.bodega_sugerida
+                        );
+                    }
+                    // Si no se encontró la sugerida o no hay sugerida, usar la primera
+                    if (!bodegaSeleccionada) {
+                        bodegaSeleccionada = stockPermitido[0];
+                    }
+                }
+                
+                const selectBodega = stockPermitido.length > 0
+                    ? `<select class="form-select form-select-sm selector-bodega" data-detalle="${detalle.id}">
+                        ${stockPermitido.map((item, index) => {
+                            // Seleccionar solo si coincide con la bodega sugerida (y existe) o es la primera si no hay sugerida
+                            const isSelected = (detalle.bodega_sugerida && item.bodega === detalle.bodega_sugerida) ||
+                                              (!detalle.bodega_sugerida && index === 0);
+                            const selected = isSelected ? 'selected' : '';
+                            const ubicacion = (item.ubicacion || '').replace(/"/g, '&quot;');
+                            const ubicacion2 = (item.ubicacion_2 || '').replace(/"/g, '&quot;');
+                            // Solo mostrar código de bodega, SIN stock
+                            return `<option value="${item.bodega}" ${selected} data-ubicacion="${ubicacion}" data-ubicacion2="${ubicacion2}">
+                                ${item.bodega}
+                            </option>`;
+                        }).join('')}
+                    </select>`
+                    : `<input type="text" class="form-control form-control-sm" value="${detalle.bodega || ''}" placeholder="Sin stock en bodegas permitidas" readonly>`;
+
+                // Formatear ubicaciones para mostrar inicialmente (solo Ubicacion 2 es la ubicación física)
+                let ubicacionesTexto = '<span class="text-muted small">Sin ubicación</span>';
+                if (bodegaSeleccionada && stockPermitido.length > 0) {
+                    const ubicacionFisica = bodegaSeleccionada.ubicacion_2 || '';
+                    if (ubicacionFisica && ubicacionFisica.trim()) {
+                        ubicacionesTexto = `<span class="badge bg-info text-dark"><i class="bi bi-geo-alt"></i> ${ubicacionFisica}</span>`;
+                    }
+                } else if (stockPermitido.length === 0) {
+                    ubicacionesTexto = '<span class="text-muted small">Sin datos</span>';
+                }
+
+                row.innerHTML = `
+                    <td>
+                        <input type="checkbox" name="detalle_option" value="${detalle.id}" data-url="${detalle.url}" checked>
+                    </td>
+                    <td><code>${detalle.codigo}</code></td>
+                    <td>${detalle.descripcion}</td>
+                    <td>${selectBodega}</td>
+                    <td>${detalle.cantidad}</td>
+                    <td class="ubicaciones-cell" data-detalle="${detalle.id}">
+                        ${ubicacionesTexto}
+                    </td>
+                `;
+                
+                // Guardar stock en el row para acceso rápido si se necesita
+                if (detalle.stock && detalle.stock.length) {
+                    row.dataset.stock = JSON.stringify(detalle.stock);
+                }
+                
+                detallesTableBody.appendChild(row);
+            });
+
+            currentDetalles = detalles;
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = true;
+            }
+
+            transferenciaModal.show();
+        });
+    });
+
+    // Listener para actualizar ubicaciones cuando cambie la bodega seleccionada
+    detallesTableBody.addEventListener('change', (event) => {
+        if (event.target.classList.contains('selector-bodega')) {
+            const select = event.target;
+            const detalleId = select.dataset.detalle;
+            const selectedOption = select.options[select.selectedIndex];
+            
+            // Buscar la celda de ubicaciones correspondiente
+            const ubicacionesCell = detallesTableBody.querySelector(`.ubicaciones-cell[data-detalle="${detalleId}"]`);
+            if (!ubicacionesCell) return;
+            
+            // Obtener ubicación física del option seleccionado (solo Ubicacion 2 es la ubicación física)
+            const ubicacionFisica = selectedOption.dataset.ubicacion2 || '';
+            
+            // Actualizar el contenido de la celda
+            if (ubicacionFisica && ubicacionFisica.trim()) {
+                ubicacionesCell.innerHTML = `<span class="badge bg-info text-dark"><i class="bi bi-geo-alt"></i> ${ubicacionFisica}</span>`;
+            } else {
+                ubicacionesCell.innerHTML = '<span class="text-muted small">Sin ubicación</span>';
+            }
+        }
+    });
+
+    // Listener para el botón "Ver bodegas" (mantenido por compatibilidad si se quiere usar)
+    detallesTableBody.addEventListener('click', (event) => {
+        if (event.target.classList.contains('btn-ver-stock')) {
+            const datos = event.target.dataset.stock ? JSON.parse(event.target.dataset.stock) : [];
+            if (!datos.length) {
+                infoUbicaciones.innerHTML = 'No hay información de bodegas para este código.';
+                infoUbicaciones.classList.remove('d-none', 'alert-danger');
+                infoUbicaciones.classList.add('alert-info');
+                return;
+            }
+
+            let html = '<strong>Bodegas disponibles:</strong><ul class="mb-0">';
+            datos.forEach(item => {
+                html += `<li><strong>${item.bodega}</strong> (${item.bodega_nombre || 'Sin nombre'}) - Ubicación: ${item.ubicacion || '-'} ${item.ubicacion_2 || ''} · Stock: ${item.stock}</li>`;
+            });
+            html += '</ul>';
+            infoUbicaciones.innerHTML = html;
+            infoUbicaciones.classList.remove('d-none', 'alert-danger');
+            infoUbicaciones.classList.add('alert-info');
+        }
+    });
+
+    const selectAllCheckbox = document.getElementById('selectAllDetalles');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', () => {
+            detallesTableBody.querySelectorAll('input[name="detalle_option"]').forEach(cb => {
+                cb.checked = selectAllCheckbox.checked;
+            });
+        });
+    }
+
+    // Función para generar e imprimir hoja de picking
+    function generarHojaPicking() {
+        // Obtener datos del modal
+        const solicitudInfo = document.getElementById('transferSolicitud').textContent;
+        const cliente = document.getElementById('transferCliente').textContent;
+        const pedidoInfo = document.getElementById('transferPedido').textContent;
+        const ot = document.getElementById('transferOt').textContent;
+        const fechaInfo = document.getElementById('transferFecha').textContent;
+        
+        // Obtener productos de la tabla (todos los visibles)
+        const rows = detallesTableBody.querySelectorAll('tr');
+        const productos = [];
+        let totalUnidades = 0;
+        
+        rows.forEach(row => {
+            const codigo = row.querySelector('td:nth-child(2) code')?.textContent || '';
+            const descripcion = row.querySelector('td:nth-child(3)')?.textContent?.trim() || '';
+            const selectBodega = row.querySelector('.selector-bodega');
+            const bodega = selectBodega ? selectBodega.value : (row.querySelector('td:nth-child(4) input')?.value || '');
+            const cantidad = parseInt(row.querySelector('td:nth-child(5)')?.textContent?.trim() || '0');
+            const ubicacionCell = row.querySelector('.ubicaciones-cell');
+            const ubicacion = ubicacionCell ? (ubicacionCell.querySelector('.badge')?.textContent?.trim() || ubicacionCell.textContent?.trim() || 'Sin ubicación') : 'Sin ubicación';
+            
+            if (codigo) {
+                productos.push({
+                    codigo,
+                    descripcion,
+                    bodega,
+                    cantidad,
+                    ubicacion
+                });
+                totalUnidades += cantidad;
+            }
+        });
+        
+        // Fecha y hora actual
+        const now = new Date();
+        const fechaImpresion = now.toLocaleDateString('es-CL', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            year: 'numeric' 
+        });
+        const horaImpresion = now.toLocaleTimeString('es-CL', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+        
+        // Generar HTML de la hoja de picking
+        const htmlPicking = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hoja de Picking - ${solicitudInfo}</title>
+    <style>
+        @media print {
+            @page {
+                size: letter;
+                margin: 1cm;
+            }
+            .no-print { display: none !important; }
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #000;
+            padding: 20px;
+        }
+        
+        .header {
+            border-bottom: 3px solid #000;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            font-size: 24pt;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #1a1a1a;
+        }
+        
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 15px;
+        }
+        
+        .info-section {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .info-section h3 {
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 3px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            font-size: 9pt;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .info-value {
+            flex: 1;
+        }
+        
+        .productos-section {
+            margin-top: 25px;
+        }
+        
+        .productos-section h2 {
+            font-size: 16pt;
+            font-weight: bold;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 5px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 9pt;
+        }
+        
+        thead {
+            background-color: #f0f0f0;
+        }
+        
+        th {
+            padding: 8px 5px;
+            text-align: left;
+            border: 1px solid #000;
+            font-weight: bold;
+            font-size: 9pt;
+        }
+        
+        td {
+            padding: 6px 5px;
+            border: 1px solid #666;
+            vertical-align: top;
+        }
+        
+        tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .codigo {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            font-size: 9pt;
+        }
+        
+        .cantidad {
+            text-align: center;
+            font-weight: bold;
+            font-size: 10pt;
+        }
+        
+        .bodega {
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .ubicacion {
+            font-size: 8pt;
+            color: #333;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 2px solid #000;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 20px;
+            font-size: 9pt;
+        }
+        
+        .totales {
+            font-weight: bold;
+            font-size: 10pt;
+        }
+        
+        .firmas {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-around;
+            border-top: 1px solid #666;
+            padding-top: 20px;
+        }
+        
+        .firma-box {
+            text-align: center;
+            width: 200px;
+        }
+        
+        .firma-line {
+            border-top: 1px solid #000;
+            margin-top: 50px;
+            padding-top: 5px;
+            font-size: 8pt;
+        }
+        
+        .no-print {
+            text-align: center;
+            margin: 20px;
+            padding: 20px;
+            background-color: #f0f0f0;
+            border: 2px solid #333;
+        }
+        
+        .no-print button {
+            padding: 10px 20px;
+            font-size: 14pt;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .no-print button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <h2>Hoja de Picking - Vista Previa</h2>
+        <p>Esta página se imprimirá en tamaño carta</p>
+        <button onclick="window.print()">🖨️ Imprimir</button>
+        <button onclick="window.close()">Cerrar</button>
+    </div>
+    
+    <div class="header">
+        <h1>📋 HOJA DE PICKING</h1>
+        <div class="header-info">
+            <div class="info-section">
+                <h3>Información de Solicitud</h3>
+                <div class="info-row">
+                    <span class="info-label">Solicitud:</span>
+                    <span class="info-value">${solicitudInfo}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Cliente:</span>
+                    <span class="info-value">${cliente}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Pedido/ST:</span>
+                    <span class="info-value">${pedidoInfo}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">OT:</span>
+                    <span class="info-value">${ot}</span>
+                </div>
+            </div>
+            <div class="info-section">
+                <h3>Fechas</h3>
+                <div class="info-row">
+                    <span class="info-label">Fecha Solicitud:</span>
+                    <span class="info-value">${fechaInfo}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Fecha Impresión:</span>
+                    <span class="info-value">${fechaImpresion} ${horaImpresion}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="productos-section">
+        <h2>Productos a Preparar</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 8%;">#</th>
+                    <th style="width: 15%;">Código</th>
+                    <th style="width: 35%;">Descripción</th>
+                    <th style="width: 12%;">Bodega</th>
+                    <th style="width: 15%;">Ubicación</th>
+                    <th style="width: 10%;">Cantidad</th>
+                    <th style="width: 5%;">✓</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${productos.map((p, index) => `
+                <tr>
+                    <td style="text-align: center;">${index + 1}</td>
+                    <td class="codigo">${p.codigo}</td>
+                    <td>${p.descripcion}</td>
+                    <td class="bodega">${p.bodega || '-'}</td>
+                    <td class="ubicacion">${p.ubicacion.replace(/📍|📍|/g, '').trim()}</td>
+                    <td class="cantidad">${p.cantidad}</td>
+                    <td style="text-align: center;"></td>
+                </tr>
+                `).join('')}
+            </tbody>
+            <tfoot>
+                <tr style="background-color: #e0e0e0; font-weight: bold;">
+                    <td colspan="5" style="text-align: right; padding-right: 10px;">TOTAL UNIDADES:</td>
+                    <td class="cantidad">${totalUnidades}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    
+    <div class="footer">
+        <div class="totales">
+            <div>Total de Productos: ${productos.length}</div>
+            <div>Total de Unidades: ${totalUnidades}</div>
+        </div>
+        <div>
+            <div><strong>Bodega Destino:</strong> 013</div>
+            <div style="margin-top: 10px; font-size: 8pt; color: #666;">
+                Sistema PESCO - Gestión de Bodega
+            </div>
+        </div>
+    </div>
+    
+    <div class="firmas">
+        <div class="firma-box">
+            <div class="firma-line">Preparador</div>
+        </div>
+        <div class="firma-box">
+            <div class="firma-line">Revisión</div>
+        </div>
+        <div class="firma-box">
+            <div class="firma-line">Fecha de Entrega</div>
+        </div>
+    </div>
+</body>
+</html>
+        `;
+        
+        // Abrir ventana de impresión
+        const ventanaImpresion = window.open('', '_blank', 'width=800,height=600');
+        ventanaImpresion.document.write(htmlPicking);
+        ventanaImpresion.document.close();
+        
+        // Esperar a que cargue y luego mostrar opción de imprimir
+        ventanaImpresion.onload = function() {
+            setTimeout(() => {
+                ventanaImpresion.focus();
+            }, 500);
+        };
+    }
+    
+    // Listener para el botón de imprimir
+    const btnImprimirPicking = document.getElementById('btnImprimirPicking');
+    if (btnImprimirPicking) {
+        btnImprimirPicking.addEventListener('click', generarHojaPicking);
+    }
+
+    function setLoading(state) {
+        const spinner = document.getElementById('spinnerTransferencia');
+        const btnText = document.getElementById('btnSubmitText');
+        const submitBtn = document.getElementById('btnSubmitTransferencia');
+        const cancelBtn = document.getElementById('btnCancelarTransferencia');
+        if (state) {
+            spinner.classList.remove('d-none');
+            btnText.classList.add('visually-hidden');
+            submitBtn.disabled = true;
+            cancelBtn.disabled = true;
+        } else {
+            spinner.classList.add('d-none');
+            btnText.classList.remove('visually-hidden');
+            submitBtn.disabled = false;
+            cancelBtn.disabled = false;
+        }
+    }
+
+    formTransfer.addEventListener('submit', function (event) {
+        event.preventDefault();
+        const selectedDetalles = Array.from(detallesTableBody.querySelectorAll('input[name="detalle_option"]:checked'));
+        if (!selectedDetalles.length) {
+            errorsBox.innerHTML = 'Debes seleccionar al menos un producto para entregar.';
+            errorsBox.classList.remove('d-none');
+            return;
+        }
+
+        const baseFormData = new FormData(formTransfer);
+        selectedDetalles.forEach(cb => {
+            baseFormData.append('detalle_ids[]', cb.value);
+            const selector = detallesTableBody.querySelector(`.selector-bodega[data-detalle="${cb.value}"]`);
+            if (selector) {
+                baseFormData.append(`bodegas_origen[${cb.value}]`, selector.value);
+            }
+        });
+
+        errorsBox.classList.add('d-none');
+        errorsBox.innerHTML = '';
+        setLoading(true);
+
+        fetch(bulkEndpoint, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: baseFormData
+        })
+            .then(async response => {
+                const data = await response.json();
+                if (data.success) {
+                    transferenciaModal.hide();
+                    window.location.reload();
+                } else {
+                    const messages = data.errors
+                        ? Object.values(data.errors).flat().join('<br>')
+                        : (data.message || 'Error al registrar la transferencia');
+                    errorsBox.innerHTML = messages;
+                    errorsBox.classList.remove('d-none');
+                }
+            })
+            .catch(() => {
+                errorsBox.innerHTML = 'Error inesperado. Intenta nuevamente.';
+                errorsBox.classList.remove('d-none');
+            })
+            .finally(() => setLoading(false));
+    });
+
+    // Auto-refresh cada 2 minutos
+    let refreshInterval = setInterval(() => {
+        if (document.querySelector('.modal.show')) return;
+        location.reload();
+    }, 120000);
+</script>
+{% endblock %}
+

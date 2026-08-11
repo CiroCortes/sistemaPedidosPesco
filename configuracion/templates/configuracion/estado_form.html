@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar estado{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h3 mb-0">Editar estado</h1>
+    <a href="{% url 'configuracion:lista_estados' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-4">{{ form.tipo.label_tag }}{{ form.tipo }}</div>
+                <div class="col-md-4">{{ form.slug.label_tag }}{{ form.slug }}</div>
+                <div class="col-md-4">{{ form.nombre.label_tag }}{{ form.nombre }}</div>
+            </div>
+            <div class="row g-3 mt-3">
+                <div class="col-md-4">{{ form.orden.label_tag }}{{ form.orden }}</div>
+                <div class="col-md-4">{{ form.color.label_tag }}{{ form.color }}</div>
+                <div class="col-md-4">{{ form.icono.label_tag }}{{ form.icono }}</div>
+            </div>
+            <div class="row g-3 mt-3">
+                <div class="col-md-6">
+                    <div class="form-check">
+                        {{ form.activo }}
+                        <label class="form-check-label">Activo</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check">
+                        {{ form.es_terminal }}
+                        <label class="form-check-label">Terminal</label>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3">
+                {{ form.descripcion.label_tag }}{{ form.descripcion }}
+            </div>
+            <div class="mt-4 d-flex justify-content-end gap-2">
+                <a href="{% url 'configuracion:lista_estados' %}" class="btn btn-light">Cancelar</a>
+                <button class="btn btn-primary">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
