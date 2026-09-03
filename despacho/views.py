@@ -223,13 +223,19 @@ def crear_bulto(request):
                     if resto > 0:
                         bultos_a_crear.append((resto, True))
                 
+                # El transporte siempre viene de la solicitud (lo define Distribución).
+                # El embalador nunca asigna transporte.
+                solicitud_lote = solicitudes_afectadas.first()
+                transporte_solicitud = solicitud_lote.transporte if solicitud_lote else 'PESCO'
+
                 for idx, (cant_asignar, es_resto) in enumerate(bultos_a_crear):
                     bulto = form.save(commit=False)
-                    bulto.pk = None # Instancia nueva
+                    bulto.pk = None  # Instancia nueva
                     bulto.codigo = ''
                     bulto.creado_por = request.user
                     bulto.estado = 'listo_despacho' if es_despachador else 'embalado'
-                    bulto.solicitud = solicitudes_afectadas.first()
+                    bulto.solicitud = solicitud_lote
+                    bulto.transportista = transporte_solicitud or 'PESCO'
                     bulto.fecha_embalaje = timezone.now()
                     bulto.save()
                     bultos_creados.append(bulto.pk)
@@ -251,17 +257,21 @@ def crear_bulto(request):
                 # MODO NORMAL (1 solo bulto consolidado)
                 bulto = form.save(commit=False)
                 bulto.creado_por = request.user
-                
+
                 if es_despachador:
                     bulto.estado = 'listo_despacho'
                 else:
                     bulto.estado = 'embalado'
-                
-                if len(solicitudes_ids) == 1:
-                    bulto.solicitud = solicitudes_afectadas.first()
-                else:
-                    bulto.solicitud = None
-                    
+
+                # Asignar solicitud padre (solo si hay exactamente 1 solicitud involucrada)
+                sol_padre = solicitudes_afectadas.first() if len(solicitudes_ids) == 1 else None
+                bulto.solicitud = sol_padre
+
+                # El transporte SIEMPRE viene de la solicitud (lo define Distribución).
+                # El embalador nunca debe asignar transporte.
+                if sol_padre and sol_padre.transporte:
+                    bulto.transportista = sol_padre.transporte
+
                 bulto.fecha_embalaje = timezone.now()
                 bulto.save()
                 bultos_creados.append(bulto.pk)

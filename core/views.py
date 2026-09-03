@@ -956,22 +956,20 @@ def calcular_indicadores_productividad(periodo_dias=30, transporte_filtro=None):
             )
             fecha_preparacion_solicitud = detalle_mas_reciente.fecha_preparacion
         
-        # Determinar transporte desde bultos o solicitud
-        bultos_solicitud = solicitud.get_bultos()
-        if bultos_solicitud:
-            # Tomar el primer bulto con transporte definido
+        # Determinar transporte: la SOLICITUD es la fuente de verdad (la pone Distribución).
+        # Solo se consulta el bulto como fallback si la solicitud no tiene transporte definido.
+        # Prioridad: solicitud.transporte > bulto.transportista_extra > bulto.transportista
+        transporte_slug = solicitud.transporte or 'Sin transporte'
+
+        if not solicitud.transporte:
+            # Fallback: buscar en bultos (caso raro, e.g. datos legacy sin transporte en solicitud)
+            bultos_solicitud = solicitud.get_bultos()
             for bulto in bultos_solicitud:
-                transporte_slug = (
-                    bulto.transportista_extra or 
-                    bulto.transportista or 
-                    solicitud.transporte or 
-                    'Sin transporte'
-                )
-                if transporte_slug != 'Sin transporte':
+                _slug = bulto.transportista_extra or bulto.transportista or ''
+                if _slug:
+                    transporte_slug = _slug
                     break
-        else:
-            transporte_slug = solicitud.transporte or 'Sin transporte'
-        
+
         # Obtener nombre legible del transporte
         transporte = TransporteConfig.etiqueta(transporte_slug) if transporte_slug != 'Sin transporte' else 'Sin transporte'
         

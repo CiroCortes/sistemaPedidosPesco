@@ -23,10 +23,14 @@
         </div>
     </div>
 
-    <!-- Filtros y Búsqueda -->
+    <!-- Barra de filtros con dropdown de estados persistente -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body p-3">
-            <form method="get" class="row g-3 align-items-center">
+            <form method="get" id="formFiltros" class="row g-3 align-items-center">
+                <!-- Campo oculto con los estados seleccionados (se llena por JS) -->
+                <input type="hidden" name="estados" id="estadosHidden" value="{{ estados_activos_param }}">
+
+                <!-- Búsqueda -->
                 <div class="col-md-4">
                     <div class="input-group">
                         <span class="input-group-text bg-light border-end-0">
@@ -36,26 +40,62 @@
                             placeholder="Buscar por ID, cliente, pedido..." value="{{ busqueda }}">
                     </div>
                 </div>
-                <div class="col-md-2">
-                    <select name="estado" class="form-select">
-                        <option value="">Todos los estados</option>
-                        {% for estado_conf in estados_config %}
-                        <option value="{{ estado_conf.slug }}" {% if estado == estado_conf.slug %}selected{% endif %}>
-                            {{ estado_conf.nombre }}
-                        </option>
-                        {% endfor %}
-                    </select>
+
+                <!-- Dropdown de selección de estados (con checkboxes) -->
+                <div class="col-md-3">
+                    <div class="dropdown" id="dropdownEstados">
+                        <button class="btn btn-outline-secondary dropdown-toggle w-100 d-flex align-items-center justify-content-between"
+                                type="button" id="btnDropdownEstados"
+                                data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false">
+                            <span><i class="bi bi-funnel me-1"></i> <span id="lblEstadosSeleccionados">Filtrar por estado</span></span>
+                        </button>
+                        <div class="dropdown-menu p-3 shadow" style="min-width:280px;" aria-labelledby="btnDropdownEstados">
+                            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                                <span class="fw-semibold small text-uppercase text-muted">Estados visibles</span>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="btnSelTodos">Todos</button>
+                                    <span class="text-muted">|</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="btnDeselTodos">Ninguno</button>
+                                </div>
+                            </div>
+                            <!-- Checkboxes generados desde el contexto Django -->
+                            {% for estado_conf in estados_config %}
+                            <div class="form-check mb-1">
+                                <input class="form-check-input estado-check" type="checkbox"
+                                       id="chk_{{ estado_conf.slug }}"
+                                       value="{{ estado_conf.slug }}"
+                                       data-nombre="{{ estado_conf.nombre }}"
+                                       data-color="{{ estado_conf.color }}">
+                                <label class="form-check-label d-flex align-items-center gap-2 cursor-pointer" for="chk_{{ estado_conf.slug }}">
+                                    <span class="badge bg-{{ estado_conf.color }}" style="width:10px;height:10px;border-radius:50%;padding:0;display:inline-block;">&nbsp;</span>
+                                    {{ estado_conf.nombre }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                            <div class="mt-3 pt-2 border-top d-flex justify-content-between">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnResetEstados">
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i> Restablecer
+                                </button>
+                                <button type="button" class="btn btn-sm btn-primary" id="btnAplicarEstados">
+                                    <i class="bi bi-check2 me-1"></i> Aplicar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Tipo -->
                 <div class="col-md-2">
                     <select name="tipo" class="form-select">
                         <option value="">Todos los tipos</option>
-                        <option value="VENTA" {% if tipo == 'VENTA' %}selected{% endif %}>Venta</option>
-                        <option value="ORDEN_FABRICACION" {% if tipo == 'ORDEN_FABRICACION' %}selected{% endif %}>Orden de
-                            Fabricación</option>
-                        <option value="TRANSFERENCIA" {% if tipo == 'TRANSFERENCIA' %}selected{% endif %}>Transferencia
-                        </option>
+                        {% for cod, nombre in tipos %}
+                        <option value="{{ cod }}" {% if tipo == cod %}selected{% endif %}>{{ nombre }}</option>
+                        {% endfor %}
                     </select>
                 </div>
+
+                <!-- Transporte -->
                 <div class="col-md-2">
                     <select name="transporte" class="form-select">
                         <option value="">Todos los transportes</option>
@@ -66,26 +106,132 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <select name="urgente" class="form-select">
-                        <option value="">Todas las prioridades</option>
-                        <option value="1" {% if urgente == '1' %}selected{% endif %}>Sólo urgentes</option>
-                        <option value="0" {% if urgente == '0' %}selected{% endif %}>Sólo normales</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-funnel me-1"></i> Filtrar
+
+                <!-- Botón filtrar + limpiar -->
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100" title="Filtrar">
+                        <i class="bi bi-search"></i>
                     </button>
-                    {% if busqueda or estado or tipo or urgente or transporte %}
-                    <a href="." class="btn btn-outline-secondary w-100 mt-2">
-                        <i class="bi bi-x-circle me-1"></i> Limpiar
-                    </a>
-                    {% endif %}
                 </div>
             </form>
         </div>
     </div>
+
+    <!-- Script de persistencia de estados con localStorage -->
+    <script>
+    (function() {
+        const LS_KEY = 'pesco_estados_visibles_{{ request.user.pk }}';
+
+        // Estados disponibles desde Django
+        const todosLosEstados = [
+            {% for estado_conf in estados_config %}
+            { slug: '{{ estado_conf.slug }}', nombre: '{{ estado_conf.nombre }}', color: '{{ estado_conf.color }}' },
+            {% endfor %}
+        ];
+
+        // Estados excluidos por defecto (primera visita sin config guardada)
+        const EXCLUIDOS_DEFAULT = ['cancelado', 'despachado', 'entregado', 'retirado', 'REZAGADO'];
+
+        // --- Cargar configuración guardada ---
+        function cargarConfig() {
+            try {
+                const raw = localStorage.getItem(LS_KEY);
+                if (raw) return JSON.parse(raw);
+            } catch(e) {}
+            // Sin config: seleccionar todo EXCEPTO los excluidos por defecto
+            return todosLosEstados
+                .filter(e => !EXCLUIDOS_DEFAULT.includes(e.slug))
+                .map(e => e.slug);
+        }
+
+        function guardarConfig(slugs) {
+            localStorage.setItem(LS_KEY, JSON.stringify(slugs));
+        }
+
+        // --- Actualizar el campo hidden y la URL si viene de localStorage ---
+        const estadosHidden = document.getElementById('estadosHidden');
+        const checkboxes = document.querySelectorAll('.estado-check');
+        const lblEstados = document.getElementById('lblEstadosSeleccionados');
+
+        function getSeleccionados() {
+            return Array.from(checkboxes).filter(c => c.checked).map(c => c.value);
+        }
+
+        function actualizarLabel(slugs) {
+            if (slugs.length === todosLosEstados.length) {
+                lblEstados.textContent = 'Todos los estados';
+            } else if (slugs.length === 0) {
+                lblEstados.textContent = 'Ningún estado';
+            } else {
+                lblEstados.textContent = slugs.length + ' estado(s) visibles';
+            }
+        }
+
+        function aplicarCheckboxes(slugs) {
+            checkboxes.forEach(cb => {
+                cb.checked = slugs.includes(cb.value);
+            });
+            actualizarLabel(slugs);
+            estadosHidden.value = slugs.join(',');
+        }
+
+        // Leer param de URL actual
+        const urlParams = new URLSearchParams(window.location.search);
+        const estadosUrl = urlParams.get('estados');
+
+        if (estadosUrl !== null) {
+            // Hay param en la URL: usar ese y guardarlo
+            const slugs = estadosUrl ? estadosUrl.split(',').filter(Boolean) : [];
+            guardarConfig(slugs);
+            aplicarCheckboxes(slugs);
+        } else {
+            // Sin param de URL: cargar desde localStorage y redirigir si es primera carga
+            const slugsGuardados = cargarConfig();
+            aplicarCheckboxes(slugsGuardados);
+            // Redirigir automáticamente con los estados guardados
+            const nuevaUrl = new URL(window.location.href);
+            nuevaUrl.searchParams.set('estados', slugsGuardados.join(','));
+            // Solo redirigir si la URL no tiene ya el param (evitar loop)
+            if (!urlParams.has('estados')) {
+                window.location.replace(nuevaUrl.toString());
+            }
+        }
+
+        // --- Eventos del dropdown ---
+        document.getElementById('btnSelTodos').addEventListener('click', function() {
+            checkboxes.forEach(cb => cb.checked = true);
+            actualizarLabel(Array.from(checkboxes).map(c => c.value));
+        });
+
+        document.getElementById('btnDeselTodos').addEventListener('click', function() {
+            checkboxes.forEach(cb => cb.checked = false);
+            actualizarLabel([]);
+        });
+
+        document.getElementById('btnResetEstados').addEventListener('click', function() {
+            const defaults = todosLosEstados
+                .filter(e => !EXCLUIDOS_DEFAULT.includes(e.slug))
+                .map(e => e.slug);
+            aplicarCheckboxes(defaults);
+        });
+
+        document.getElementById('btnAplicarEstados').addEventListener('click', function() {
+            const slugs = getSeleccionados();
+            guardarConfig(slugs);
+            estadosHidden.value = slugs.join(',');
+            // Cerrar dropdown y enviar form
+            const dd = bootstrap.Dropdown.getOrCreateInstance(document.getElementById('btnDropdownEstados'));
+            dd.hide();
+            // Construir URL manteniendo otros filtros
+            const form = document.getElementById('formFiltros');
+            form.submit();
+        });
+
+        checkboxes.forEach(cb => cb.addEventListener('change', function() {
+            actualizarLabel(getSeleccionados());
+        }));
+    })();
+    </script>
 
     <!-- Tabla de Resultados -->
     <div class="card border-0 shadow-sm">

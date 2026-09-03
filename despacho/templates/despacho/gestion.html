@@ -93,6 +93,7 @@
                             <input type="checkbox" class="solicitud-checkbox" value="{{ solicitud.id }}"
                                 data-detalles-id="detalles-{{ solicitud.id }}"
                                 data-transporte="{{ solicitud.transporte }}"
+                                data-transporte-display="{{ solicitud.get_transporte_display }}"
                                 data-ot="{{ solicitud.numero_ot|default:'' }}"
                                 data-afecta-stock="{{ solicitud.afecta_stock|yesno:'true,false' }}">
                             {% endif %}
@@ -199,20 +200,16 @@
                             <label class="form-label">Tipo de bulto</label>
                             {{ form.tipo }}
                         </div>
-                        {% if request.user.es_admin %}
+                        <!-- Transportista: informativo, lo define Distribución en la solicitud -->
                         <div class="col-md-6">
                             <label class="form-label">Transportista</label>
-                            <select name="{{ form.transportista.name }}" class="form-select" id="id_{{ form.transportista.name }}">
-                                {% for value, label in form.transportista.field.choices %}
-                                <option value="{{ value }}">{{ label }}</option>
-                                {% endfor %}
-                            </select>
+                            <div id="transportistaInfo" class="form-control-plaintext border rounded px-3 py-2 bg-light d-flex align-items-center gap-2">
+                                <i class="bi bi-truck text-secondary"></i>
+                                <span id="transportistaInfoTexto" class="fw-semibold text-secondary">—</span>
+                                <small class="text-muted ms-auto"><i class="bi bi-lock-fill"></i> definido por Distribución</small>
+                            </div>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Transportista externo</label>
-                            {{ form.transportista_extra }}
-                            <small class="text-muted">Completar solo cuando eliges OTRO.</small>
-                        </div>
+                        {% if request.user.es_admin %}
                         <div class="col-md-6">
                             <label class="form-label">N° guía transportista</label>
                             {{ form.numero_guia_transportista }}
@@ -310,16 +307,25 @@
         seleccionErrors.classList.add('d-none');
         seleccionErrors.innerHTML = '';
         let disponibles = 0;
-        const transportistaField = document.getElementById('id_transportista');
-        const transportistaExtra = document.getElementById('id_transportista_extra');
 
-        if (!soloLectura && ids.length === 1) {
-            const checkboxSolicitud = getCheckboxSolicitud(ids[0]);
-            if (checkboxSolicitud && transportistaField) {
-                transportistaField.value = checkboxSolicitud.dataset.transporte || '';
-                if (transportistaExtra && (checkboxSolicitud.dataset.transporte || '') !== 'OTRO') {
-                    transportistaExtra.value = '';
-                }
+        // Actualizar el campo informativo de transportista (solo lectura)
+        const transportistaInfoTexto = document.getElementById('transportistaInfoTexto');
+        if (transportistaInfoTexto) {
+            if (ids.length === 1) {
+                const cbSol = getCheckboxSolicitud(ids[0]);
+                const label = cbSol ? (cbSol.dataset.transporteDisplay || cbSol.dataset.transporte || '—') : '—';
+                transportistaInfoTexto.textContent = label;
+                transportistaInfoTexto.classList.remove('text-secondary');
+                transportistaInfoTexto.classList.add('text-dark');
+            } else if (ids.length > 1) {
+                // Multi-solicitud: mostrar advertencia
+                transportistaInfoTexto.textContent = 'Múltiples solicitudes (puede variar)';
+                transportistaInfoTexto.classList.remove('text-dark');
+                transportistaInfoTexto.classList.add('text-secondary');
+            } else {
+                transportistaInfoTexto.textContent = '—';
+                transportistaInfoTexto.classList.remove('text-dark');
+                transportistaInfoTexto.classList.add('text-secondary');
             }
         }
 

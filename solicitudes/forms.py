@@ -234,10 +234,11 @@ class SolicitudDetalleEdicionAdminForm(forms.ModelForm):
             # Validar que no sea anterior a solicitud.created_at
             if self.instance and self.instance.solicitud and self.instance.solicitud.created_at:
                 if fecha < self.instance.solicitud.created_at:
+                    created_at_local = timezone.localtime(self.instance.solicitud.created_at).strftime("%d/%m/%Y %H:%M")
                     raise ValidationError(
                         f'La fecha de preparación ({fecha.strftime("%d/%m/%Y %H:%M")}) '
                         f'no puede ser anterior a la fecha de creación de la solicitud '
-                        f'({self.instance.solicitud.created_at.strftime("%d/%m/%Y %H:%M")}). '
+                        f'({created_at_local}). '
                         f'Esto genera KPIs negativos. Por favor, corrige la fecha.'
                     )
             

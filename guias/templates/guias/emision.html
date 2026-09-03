@@ -65,17 +65,23 @@
     <!-- Selección y Generación -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-light">
-            <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h6 class="mb-0">
                     <i class="bi bi-list-check me-2"></i>
                     Solicitudes Disponibles
                 </h6>
-                <div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="seleccionarTodos">
                         <i class="bi bi-check-all me-1"></i> Seleccionar Todos
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="deseleccionarTodos">
                         <i class="bi bi-x-square me-1"></i> Deseleccionar
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnToggleOcultarEmitidos">
+                        <i class="bi bi-eye-slash me-1"></i> <span id="lblToggleEmitidos">Ocultar emitidos</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="limpiarEmitidos" title="Borrar marcas de detalle emitido guardadas en este navegador">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i> Limpiar marcas
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="generarDetalle">
                         <i class="bi bi-file-text me-1"></i> Generar Detalle
@@ -103,7 +109,7 @@
                     </thead>
                     <tbody>
                         {% for solicitud in solicitudes %}
-                        <tr>
+                        <tr id="fila-solicitud-{{ solicitud.id }}" data-solicitud-id="{{ solicitud.id }}">
                             <td>
                                 <input type="checkbox" name="solicitud_id" value="{{ solicitud.id }}" 
                                     class="form-check-input solicitud-checkbox">
@@ -114,7 +120,12 @@
                             <td>{{ solicitud.numero_ot|default:"-" }}</td>
                             <td>{{ solicitud.numero_st|default:"-" }}</td>
                             <td>
-                                <span class="badge bg-info">{{ solicitud.estado|title }}</span>
+                                <div class="d-flex flex-column gap-1 align-items-start">
+                                    <span class="badge bg-info">{{ solicitud.estado|title }}</span>
+                                    <span class="badge bg-success d-none badge-emitido" id="badge-emitido-{{ solicitud.id }}" title="Detalle generado para SAP">
+                                        <i class="bi bi-check2-circle me-1"></i> Guía emitida
+                                    </span>
+                                </div>
                             </td>
                             <td>
                                 <span class="badge bg-secondary">{{ solicitud.detalles.count }} producto(s)</span>
@@ -184,7 +195,7 @@
                 Haga clic en "Copiar" o seleccione todo el texto manualmente.
             </div>
             <textarea id="textoPlano" class="form-control font-monospace" 
-                rows="20" readonly style="font-size: 0.85rem; white-space: pre; overflow-wrap: normal; overflow-x: auto;"></textarea>
+                rows="15" readonly style="font-size: 0.75rem; line-height: 1.4; white-space: pre; overflow-wrap: normal; overflow-x: auto; letter-spacing: 0;"></textarea>
             <div class="mt-3 text-muted small">
                 <i class="bi bi-check-circle me-1"></i>
                 <span id="resumenDetalle"></span>
@@ -204,6 +215,71 @@ document.addEventListener('DOMContentLoaded', function() {
     const textoPlano = document.getElementById('textoPlano');
     const resultadoCard = document.getElementById('resultadoCard');
     const resumenDetalle = document.getElementById('resumenDetalle');
+
+    const LS_EMITIDOS_KEY = 'pesco_guias_emitidas_ids';
+
+    // Funciones para persistencia de emitidos en localStorage
+    function getEmitidos() {
+        try {
+            const raw = localStorage.getItem(LS_EMITIDOS_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch(e) {
+            return [];
+        }
+    }
+
+    function guardarEmitidos(ids) {
+        try {
+            localStorage.setItem(LS_EMITIDOS_KEY, JSON.stringify(ids));
+        } catch(e) {}
+    }
+
+    function marcarComoEmitido(id) {
+        const badge = document.getElementById(`badge-emitido-${id}`);
+        if (badge) badge.classList.remove('d-none');
+        const fila = document.getElementById(`fila-solicitud-${id}`);
+        if (fila) fila.classList.add('table-success', 'fila-emitida');
+    }
+
+    // Inicializar marcas guardadas al cargar la página
+    let emitidosGuardados = getEmitidos();
+    emitidosGuardados.forEach(id => marcarComoEmitido(id));
+
+    // Botón Ocultar / Mostrar emitidos
+    const btnToggleOcultar = document.getElementById('btnToggleOcultarEmitidos');
+    const lblToggle = document.getElementById('lblToggleEmitidos');
+    let ocultandoEmitidos = false;
+
+    if (btnToggleOcultar) {
+        btnToggleOcultar.addEventListener('click', function() {
+            ocultandoEmitidos = !ocultandoEmitidos;
+            document.querySelectorAll('.fila-emitida').forEach(row => {
+                row.style.display = ocultandoEmitidos ? 'none' : '';
+            });
+            if (lblToggle) {
+                lblToggle.textContent = ocultandoEmitidos ? 'Mostrar emitidos' : 'Ocultar emitidos';
+            }
+            btnToggleOcultar.classList.toggle('btn-secondary', ocultandoEmitidos);
+            btnToggleOcultar.classList.toggle('btn-outline-secondary', !ocultandoEmitidos);
+        });
+    }
+
+    // Botón Limpiar marcas
+    const btnLimpiar = document.getElementById('limpiarEmitidos');
+    if (btnLimpiar) {
+        btnLimpiar.addEventListener('click', function() {
+            if (confirm('¿Deseas reiniciar las marcas de "Guía emitida" guardadas en este navegador?')) {
+                localStorage.removeItem(LS_EMITIDOS_KEY);
+                document.querySelectorAll('.badge-emitido').forEach(b => b.classList.add('d-none'));
+                document.querySelectorAll('.fila-emitida').forEach(r => {
+                    r.classList.remove('table-success', 'fila-emitida');
+                    r.style.display = '';
+                });
+                if (lblToggle) lblToggle.textContent = 'Ocultar emitidos';
+                ocultandoEmitidos = false;
+            }
+        });
+    }
 
     // Checkbox "Seleccionar todos"
     if (checkAll) {
@@ -320,6 +396,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     resultadoCard.style.display = 'block';
                     // Scroll al resultado
                     resultadoCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                    // Marcar visualmente como emitidas y guardar en localStorage
+                    const procesados = (data.solicitud_ids && data.solicitud_ids.length > 0) 
+                        ? data.solicitud_ids.map(String) 
+                        : seleccionados.map(String);
+                    
+                    let currentEmitidos = getEmitidos().map(String);
+                    procesados.forEach(id => {
+                        if (!currentEmitidos.includes(id)) {
+                            currentEmitidos.push(id);
+                        }
+                        marcarComoEmitido(id);
+                    });
+                    guardarEmitidos(currentEmitidos);
+
+                    // Desmarcar los checkboxes generados
+                    checkboxes.forEach(cb => {
+                        if (procesados.includes(String(cb.value))) {
+                            cb.checked = false;
+                        }
+                    });
+                    if (checkAll) checkAll.checked = false;
                 } else {
                     alert('Error: ' + (data.error || 'No se pudo generar el detalle'));
                 }

@@ -5,6 +5,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import JsonResponse, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 import json
 
@@ -60,14 +61,20 @@ def lista_solicitudes(request):
         solicitudes = solicitudes.filter(estado__in=['en_despacho', 'embalado', 'listo_despacho', 'en_ruta'])
 
     # PASO 3: Aplicar filtros desde la URL
-    estado = (request.GET.get('estado', '') or '').strip()
+    estados_param = (request.GET.get('estados', '') or '').strip()  # comma-separated slugs
     tipo = request.GET.get('tipo', '')
     urgente = request.GET.get('urgente', '')
     transporte = request.GET.get('transporte', '')
     busqueda = request.GET.get('q', '')
 
-    if estado:
-        solicitudes = solicitudes.filter(estado=estado)
+    # Filtrar por lista de estados seleccionados (viene del dropdown con localStorage)
+    if estados_param:
+        estados_lista = [s.strip() for s in estados_param.split(',') if s.strip()]
+        if estados_lista:
+            solicitudes = solicitudes.filter(estado__in=estados_lista)
+    # Si no hay param 'estados', se muestran todas (el JS se encargará de redirigir
+    # con la configuración guardada en localStorage en el siguiente page load)
+
     if tipo:
         solicitudes = solicitudes.filter(tipo=tipo)
     if urgente == '1':
@@ -84,31 +91,27 @@ def lista_solicitudes(request):
             | Q(numero_ot__icontains=busqueda)
         )
 
-    # PASO 4: Cargar relaciones ANTES de paginar (Django solo carga 25 en la query)
-    # El prefetch_related es inteligente y solo carga relaciones de los objetos obtenidos
+    # PASO 4: Cargar relaciones ANTES de paginar
     solicitudes = (
         solicitudes
-        .select_related('solicitante')  # ForeignKey: siempre eficiente
+        .select_related('solicitante')
         .prefetch_related(
-            # Solo prefetch de bultos (el template no usa detalles en la lista)
             Prefetch('bultos', queryset=Bulto.objects.only('id', 'codigo'))
         )
-        .order_by('id')  # Orden ascendente: más antiguas primero
+        .order_by('id')
     )
-    
-    # PASO 5: Paginar (esto ejecuta la query pero Django solo trae 25 registros)
+
+    # PASO 5: Paginar
     paginator = Paginator(solicitudes, 25)
     page_obj = paginator.get_page(request.GET.get('page'))
 
-    # Stats: Solo si es necesario (comentado por ahora para velocidad)
-    # stats = Solicitud.objects.values('estado').annotate(total=Count('id'))
-    stats = []  # Desactivado temporalmente para mejorar velocidad
+    stats = []
 
     estados_opciones = EstadoWorkflow.activos_para(EstadoWorkflow.TIPO_SOLICITUD)
 
     context = {
         'page_obj': page_obj,
-        'estado': estado,
+        'estados_activos_param': estados_param,  # Para pre-rellenar el campo hidden
         'tipo': tipo,
         'urgente': urgente,
         'transporte': transporte,
@@ -120,6 +123,7 @@ def lista_solicitudes(request):
         'transportes_config': TransporteConfig.activos(),
     }
     return render(request, 'solicitudes/lista.html', context)
+
 
 
 @login_required
@@ -488,7 +492,7 @@ def detalle_solicitud_ajax(request, pk):
                 'alto': float(bulto.alto_cm),
                 'volumen': bulto.volumen_m3,
                 'codigos': codigos_en_bulto,
-                'fecha_creacion': bulto.fecha_creacion.strftime('%d/%m/%Y %H:%M'),
+                'fecha_creacion': timezone.localtime(bulto.fecha_creacion).strftime('%d/%m/%Y %H:%M') if bulto.fecha_creacion else '-',
             })
         
         # Preparar respuesta
@@ -511,8 +515,8 @@ def detalle_solicitud_ajax(request, pk):
             'descripcion': solicitud.descripcion or '-',
             'observacion': solicitud.observacion or 'Sin observaciones',
             'solicitante': solicitud.solicitante.nombre_completo if solicitud.solicitante and solicitud.solicitante.nombre_completo else (solicitud.solicitante.username if solicitud.solicitante else 'Sistema'),
-            'created_at': solicitud.created_at.strftime('%d/%m/%Y %H:%M'),
-            'updated_at': solicitud.updated_at.strftime('%d/%m/%Y %H:%M'),
+            'created_at': timezone.localtime(solicitud.created_at).strftime('%d/%m/%Y %H:%M') if solicitud.created_at else '-',
+            'updated_at': timezone.localtime(solicitud.updated_at).strftime('%d/%m/%Y %H:%M') if solicitud.updated_at else '-',
             'productos': productos,
             'bultos': bultos_data
         }

@@ -120,25 +120,24 @@ def generar_detalle_guia(request):
         if not solicitudes.exists():
             return JsonResponse({'error': 'No se encontraron solicitudes válidas'}, status=404)
     
-        # Generar texto plano
+        # Generar texto plano — formato compacto tipo guía de despacho
+        # Columnas: CODIGO(14) DESCRIPCION(36) CANT(5) P.UNIT(10) PROYECTO(15)
+        SEP = "-" * 85
+        PRECIO_DEFAULT = "$10.000"
+
         lineas = []
-        lineas.append("=" * 100)
-        lineas.append("DETALLE DE GUÍA - SISTEMA PESCO")
-        lineas.append("=" * 100)
-        lineas.append("")
-        
-        # Encabezado de columnas
-        lineas.append(f"{'CÓDIGO':<15} {'DESCRIPCIÓN':<50} {'CANT':<8} {'PROYECTO':<25}")
-        lineas.append("-" * 100)
-        
+        lineas.append(SEP)
+        lineas.append(f"{'PROYECTO':<15} {'CODIGO':<14} {'DESCRIPCION':<36} {'CANT':>5} {'P.UNITARIA':>10}")
+        lineas.append(SEP)
+
         total_productos = 0
-        
+
         # Detalles de cada solicitud
         for solicitud in solicitudes:
             # Determinar proyecto asociado según el tipo de solicitud
             tipo_solicitud = solicitud.tipo or ''
             proyecto = ''
-            
+
             if tipo_solicitud == 'PC':
                 proyecto = solicitud.numero_pedido or f"PC-{solicitud.id}"
             elif tipo_solicitud == 'OC':
@@ -152,39 +151,45 @@ def generar_detalle_guia(request):
             elif tipo_solicitud == 'RM':
                 proyecto = solicitud.numero_pedido or f"RM-{solicitud.id}"
             else:
-                # Si no hay tipo definido, intentar usar número de pedido o ST
                 proyecto = solicitud.numero_pedido or solicitud.numero_st or f"SOL-{solicitud.id}"
-            
+
             # Detalles de productos
             for detalle in solicitud.detalles.all():
-                codigo = (detalle.codigo or '').strip()
+                codigo = (detalle.codigo or '').strip()[:14]
                 descripcion = (detalle.descripcion or '').strip()
-                # Limitar descripción a 50 caracteres
-                if len(descripcion) > 50:
-                    descripcion = descripcion[:47] + '...'
                 cantidad = str(detalle.cantidad)
-                
-                # Formatear línea
-                linea = f"{codigo:<15} {descripcion:<50} {cantidad:<8} {proyecto:<25}"
-                lineas.append(linea)
+
+                # Descripción larga: primera línea con todos los campos, resto solo descripción
+                max_desc = 36
+                if len(descripcion) > max_desc:
+                    lineas.append(f"{proyecto:<15} {codigo:<14} {descripcion[:max_desc]:<36} {cantidad:>5} {PRECIO_DEFAULT:>10}")
+                    resto = descripcion[max_desc:]
+                    while resto:
+                        lineas.append(f"{'':15} {'':14}   {resto[:max_desc]}")
+                        resto = resto[max_desc:]
+                else:
+                    lineas.append(f"{proyecto:<15} {codigo:<14} {descripcion:<36} {cantidad:>5} {PRECIO_DEFAULT:>10}")
+
                 total_productos += 1
-            
-            # Separador entre solicitudes
-            lineas.append("-" * 100)
-        
-        # Pie
-        lineas.append("")
-        lineas.append(f"Total solicitudes: {solicitudes.count()}")
-        lineas.append(f"Total productos: {total_productos}")
-        lineas.append("=" * 100)
-        
+
+            # Separador entre solicitudes (solo si hay más de una)
+            if solicitudes.count() > 1:
+                lineas.append(SEP)
+
+
+        # Pie compacto
+        lineas.append(SEP)
+        lineas.append(f"Total: {solicitudes.count()} solicitud(es) | {total_productos} producto(s)")
+
         texto_plano = "\n".join(lineas)
+
         
         return JsonResponse({
             'success': True,
             'texto': texto_plano,
             'total_solicitudes': solicitudes.count(),
-            'total_productos': total_productos
+            'total_productos': total_productos,
+            'solicitud_ids': [s.id for s in solicitudes]
         })
     
     except Exception as e:
